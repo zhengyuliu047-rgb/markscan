@@ -112,7 +112,10 @@ HOST="127.0.0.1"
 PORT="18888"
 DATABASE_URL="postgresql://markscan:strong-password@127.0.0.1:5432/markscan?schema=public"
 AUTH_SECRET="replace-with-64-hex-random-secret"
+MARKSCAN_COOKIE_SECURE="1"
 ```
+
+如果还没启用 HTTPS、只是 HTTP 反代测试登录，把 `MARKSCAN_COOKIE_SECURE` 临时设为 `0`，否则浏览器会拒收 Secure 登录 Cookie，表现为登录后又回到登录页。正式启用 HTTPS 后应改回 `1`。
 
 ```bash
 npm ci

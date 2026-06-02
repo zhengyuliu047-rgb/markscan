@@ -24,6 +24,13 @@ function getEnvAdminPasswordHash() {
   return process.env.ADMIN_PASSWORD_HASH || config.adminPasswordHash || "";
 }
 
+function useSecureSessionCookie() {
+  const value = process.env.MARKSCAN_COOKIE_SECURE;
+  if (value === "0" || value?.toLowerCase() === "false") return false;
+  if (value === "1" || value?.toLowerCase() === "true") return true;
+  return process.env.NODE_ENV === "production";
+}
+
 function sign(value: string) {
   return createHmac("sha256", getAuthSecret()).update(value).digest("base64url");
 }
@@ -94,7 +101,7 @@ export function setAdminSession(event: H3Event, username: string) {
   setCookie(event, SESSION_COOKIE, createSessionToken(username), {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: useSecureSessionCookie(),
     maxAge: SESSION_MAX_AGE,
     path: "/",
   });
