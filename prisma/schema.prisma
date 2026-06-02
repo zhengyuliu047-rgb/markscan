@@ -1,0 +1,133 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Shop {
+  id              String          @id @default(cuid())
+  channel         String          @default("ldxp")
+  name            String
+  token           String
+  baseUrl         String          @default("https://pay.ldxp.cn")
+  active          Boolean         @default(true)
+  intervalMinutes Int             @default(10)
+  lastSyncedAt    DateTime?
+  lastCollectedAt DateTime?
+  lastError       String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  categories      ShopCategory[]
+  listings        Listing[]
+  runs            CollectionRun[]
+  snapshots       PriceSnapshot[]
+
+  @@unique([channel, token])
+  @@index([active])
+  @@index([channel])
+}
+
+model ShopCategory {
+  id         String    @id @default(cuid())
+  shopId     String
+  externalId String
+  goodsType  String
+  name       String
+  image      String?
+  goodsCount Int       @default(0)
+  enabled    Boolean   @default(true)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  shop       Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  listings   Listing[]
+
+  @@unique([shopId, externalId, goodsType])
+  @@index([shopId])
+}
+
+model StandardProduct {
+  id        String          @id @default(cuid())
+  name      String          @unique
+  keyword   String?
+  active    Boolean         @default(true)
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+  listings  Listing[]
+  snapshots PriceSnapshot[]
+}
+
+model Listing {
+  id                String           @id @default(cuid())
+  shopId            String
+  categoryId        String?
+  standardProductId String?
+  goodsKey          String
+  goodsType         String
+  title             String
+  link              String
+  image             String?
+  description       String?
+  price             Float?
+  marketPrice       Float?
+  stock             Int?
+  isAvailable       Boolean          @default(true)
+  enabled           Boolean          @default(false)
+  lastSeenAt        DateTime?
+  lastSnapshotAt    DateTime?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  shop              Shop             @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  category          ShopCategory?    @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  standardProduct   StandardProduct? @relation(fields: [standardProductId], references: [id], onDelete: SetNull)
+  snapshots         PriceSnapshot[]
+
+  @@unique([shopId, goodsKey])
+  @@index([shopId])
+  @@index([enabled])
+  @@index([standardProductId])
+}
+
+model PriceSnapshot {
+  id                String           @id @default(cuid())
+  shopId            String
+  listingId         String
+  standardProductId String?
+  collectionRunId   String?
+  price             Float?
+  marketPrice       Float?
+  stock             Int?
+  isAvailable       Boolean
+  raw               String?
+  sampledAt         DateTime         @default(now())
+  shop              Shop             @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  listing           Listing          @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  standardProduct   StandardProduct? @relation(fields: [standardProductId], references: [id], onDelete: SetNull)
+  collectionRun     CollectionRun?   @relation(fields: [collectionRunId], references: [id], onDelete: SetNull)
+
+  @@index([shopId, sampledAt])
+  @@index([listingId, sampledAt])
+  @@index([standardProductId, sampledAt])
+  @@index([sampledAt])
+}
+
+model CollectionRun {
+  id               String          @id @default(cuid())
+  shopId           String?
+  type             String
+  status           String
+  message          String?
+  itemsSeen        Int             @default(0)
+  snapshotsCreated Int             @default(0)
+  error            String?
+  startedAt        DateTime        @default(now())
+  finishedAt       DateTime?
+  shop             Shop?           @relation(fields: [shopId], references: [id], onDelete: SetNull)
+  snapshots        PriceSnapshot[]
+
+  @@index([shopId])
+  @@index([startedAt])
+  @@index([status])
+}

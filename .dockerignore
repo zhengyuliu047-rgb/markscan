@@ -1,0 +1,12 @@
+node_modules
+.next
+.nuxt
+.output
+dist
+coverage
+*.log
+.env
+.env*.local
+data
+prisma/dev.db
+prisma/dev.db-journal
