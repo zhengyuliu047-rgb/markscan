@@ -46,7 +46,7 @@ export type LdxpGoodsPage = {
 
 const DEFAULT_GOODS_TYPES = ["card", "article", "resource", "equity"];
 const REQUEST_TIMEOUT_MS = 15_000;
-const MAX_ATTEMPTS = 2;
+const MAX_ATTEMPTS = 3;
 const BROWSER_USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
 
@@ -55,26 +55,69 @@ const sessionCookieCache = new Map<
   string,
   { cookies: string; timestamp: number }
 >();
-const SESSION_CACHE_TTL_MS = 30 * 60 * 1000; // 30 分钟
+const SESSION_CACHE_TTL_MS = 25 * 60 * 1000; // 25 分钟
 
 function previewResponseBody(text: string) {
   return text.replace(/\s+/g, " ").trim().slice(0, 160);
 }
 
 /**
- * 访问店铺主页，获取 WAF/CDN 会话 Cookie
- * 用于绕过防火墙验证（仅限已授权的防火墙测试）
+ * 解算 acw_sc__v2 WAF JS 挑战
+ * 从返回的 HTML 中提取 arg1，按位置重排后和固定密钥 XOR 得到验证 Cookie。
+ */
+function solveAcwScV2(htmlBody: string): string | null {
+  // 提取 arg1='...' 中的 hex 字符串
+  const arg1Match = htmlBody.match(/var\s+arg1\s*=\s*'([0-9A-Fa-f]+)'/);
+  if (!arg1Match?.[1]) return null;
+  const arg1 = arg1Match[1];
+
+  // 固定的位置重排表（从 WAF JS 里提取的 m 数组）
+  const order = [
+    15, 35, 29, 24, 33, 16, 1, 38, 10, 9, 19, 31, 40, 27, 22, 23,
+    25, 13, 6, 11, 39, 18, 20, 8, 14, 21, 32, 26, 2, 30, 7, 4,
+    17, 5, 3, 28, 34, 37, 12, 36,
+  ];
+
+  // 按 order 重排 arg1 的字符
+  const reordered: string[] = new Array(order.length);
+  for (let i = 0; i < arg1.length && i < order.length; i++) {
+    const targetIndex = order[i];
+    const value = arg1[i];
+    if (targetIndex === undefined || value === undefined) continue;
+    reordered[targetIndex - 1] = value;
+  }
+  const shuffled = reordered.join("");
+
+  // 固定 XOR 密钥（从 WAF JS 提取的 p 变量）
+  const key = "3000176000856006061501533003690027800375";
+
+  // 逐两位 hex XOR
+  let result = "";
+  for (let i = 0; i < shuffled.length && i < key.length; i += 2) {
+    const a = parseInt(shuffled.substring(i, i + 2), 16);
+    const b = parseInt(key.substring(i, i + 2), 16);
+    let hex = (a ^ b).toString(16);
+    if (hex.length === 1) hex = "0" + hex;
+    result += hex;
+  }
+
+  return result || null;
+}
+
+/**
+ * 访问店铺主页，获取 WAF/CDN 会话 Cookie。
+ * 如果响应是 JS 挑战页，则求解 acw_sc__v2 并重新请求获取真实会话 Cookie。
  */
 async function acquireSessionCookies(baseUrl: string, token: string) {
   const root = normalizeBaseUrl(baseUrl);
   const shopPageUrl = `${root}/shop/${token}`;
 
   try {
-    const response = await fetch(shopPageUrl, {
+    // 第一次请求：可能触发 JS 挑战
+    const firstResponse = await fetch(shopPageUrl, {
       method: "GET",
       headers: {
-        Accept:
-          "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
         "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
         "Cache-Control": "no-cache",
         Pragma: "no-cache",
@@ -85,25 +128,70 @@ async function acquireSessionCookies(baseUrl: string, token: string) {
         "Upgrade-Insecure-Requests": "1",
         "User-Agent": BROWSER_USER_AGENT,
       },
-      redirect: "follow",
+      redirect: "manual",
       cache: "no-store",
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
 
-    // 提取所有 Set-Cookie 响应头
-    const setCookieHeaders = response.headers.getSetCookie?.() ?? [];
-    if (setCookieHeaders.length === 0) {
-      // 没有 Cookie 也不报错，可能目标站不需要或已放行
-      return "";
+    // 收集第一次响应的 Set-Cookie
+    const firstSetCookies = firstResponse.headers.getSetCookie?.() ?? [];
+    const firstCookies = firstSetCookies
+      .map((h) => h.split(";")[0])
+      .filter((p): p is string => p !== undefined)
+      .map((p) => p.trim());
+
+    const firstBody = await firstResponse.text();
+
+    // 检查是否是 JS 挑战页
+    const acwScV2 = solveAcwScV2(firstBody);
+    if (acwScV2) {
+      // 计算出验证 Cookie，带上所有已收集的 Cookie 重新请求
+      const challengeCookie = `acw_sc__v2=${acwScV2}`;
+      const allFirstCookies = [...firstCookies, challengeCookie].join("; ");
+
+      // 第二次请求：带上求解后的 Cookie
+      const secondResponse = await fetch(shopPageUrl, {
+        method: "GET",
+        headers: {
+          Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+          "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+          "Cache-Control": "no-cache",
+          Cookie: allFirstCookies,
+          Pragma: "no-cache",
+          "Sec-Fetch-Dest": "document",
+          "Sec-Fetch-Mode": "navigate",
+          "Sec-Fetch-Site": "same-origin",
+          "Upgrade-Insecure-Requests": "1",
+          "User-Agent": BROWSER_USER_AGENT,
+        },
+        redirect: "follow",
+        cache: "no-store",
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      });
+
+      // 合并两次请求的 Cookie
+      const secondSetCookies = secondResponse.headers.getSetCookie?.() ?? [];
+      const secondCookies = secondSetCookies
+        .map((h) => h.split(";")[0])
+        .filter((p): p is string => p !== undefined)
+        .map((p) => p.trim());
+
+      // 合并去重
+      const cookieMap = new Map<string, string>();
+      for (const c of [...firstCookies, challengeCookie, ...secondCookies]) {
+        const eqIdx = c.indexOf("=");
+        if (eqIdx > 0) cookieMap.set(c.substring(0, eqIdx), c);
+      }
+      const finalCookies = [...cookieMap.values()].join("; ");
+
+      console.log(`[ldxp] WAF challenge solved for ${root}, cookies acquired`);
+      sessionCookieCache.set(root, { cookies: finalCookies, timestamp: Date.now() });
+      return finalCookies;
     }
 
-    // 解析每个 Cookie，只保留 name=value 部分
-    const cookiePairs = setCookieHeaders
-      .map((header) => header.split(";")[0])
-      .filter((part): part is string => part !== undefined)
-      .map((part) => part.trim());
-
-    const cookieString = cookiePairs.join("; ");
+    // 没有 JS 挑战，直接用第一次的 Cookie
+    if (firstCookies.length === 0) return "";
+    const cookieString = firstCookies.join("; ");
     sessionCookieCache.set(root, { cookies: cookieString, timestamp: Date.now() });
     return cookieString;
   } catch (error) {
@@ -200,15 +288,19 @@ async function postForm<T>(
       try {
         payload = JSON.parse(responseText) as LdxpApiResponse<T>;
       } catch {
-        // 如果仍然收到 HTML（可能是 WAF 拦截），清除缓存的 Cookie 并在下次重试
-        if (responseText.includes("<html>") || responseText.includes("<script>")) {
+        // 如果收到 HTML（WAF 拦截），清除 Cookie 缓存，下次重试会重新获取
+        if (responseText.includes("<html") || responseText.includes("<script")) {
           sessionCookieCache.delete(root);
+          if (attempt < MAX_ATTEMPTS) {
+            await new Promise((resolve) => setTimeout(resolve, 800));
+            continue;
+          }
           throw new Error(
-            `店铺接口返回 HTML 而非 JSON，可能被防火墙拦截。请检查：1) 店铺 URL 是否正确 2) 服务器出口 IP 是否被目标站限制。` +
+            `店铺接口返回 HTML 而非 JSON，WAF 挑战求解后仍被拦截。` +
             `完整路径：${root}${path}，响应：${previewResponseBody(responseText)}`
           );
         }
-        throw new Error(`店铺接口没有返回 JSON，请检查店铺 URL 或目标站是否有安全验证：${root}${path}，响应：${previewResponseBody(responseText)}`);
+        throw new Error(`店铺接口没有返回 JSON：${root}${path}，响应：${previewResponseBody(responseText)}`);
       }
       if (Number(payload.code) !== 1) throw new Error(payload.msg || `request failed for ${path}`);
       return payload.data;
