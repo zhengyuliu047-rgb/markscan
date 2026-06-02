@@ -47,6 +47,8 @@ export type LdxpGoodsPage = {
 const DEFAULT_GOODS_TYPES = ["card", "article", "resource", "equity"];
 const REQUEST_TIMEOUT_MS = 15_000;
 const MAX_ATTEMPTS = 2;
+const BROWSER_USER_AGENT =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
 
 function previewResponseBody(text: string) {
   return text.replace(/\s+/g, " ").trim().slice(0, 160);
@@ -93,10 +95,14 @@ async function postForm<T>(
         method: "POST",
         headers: {
           Accept: "application/json, text/plain, */*",
+          "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
           "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
           Origin: root,
           Referer: `${root}/shop/${token}`,
-          "User-Agent": "Mozilla/5.0 MarkscanCollector/0.1",
+          "Sec-Fetch-Dest": "empty",
+          "Sec-Fetch-Mode": "cors",
+          "Sec-Fetch-Site": "same-origin",
+          "User-Agent": BROWSER_USER_AGENT,
           Visitorid: `markscan-${token}`,
           "X-Requested-With": "XMLHttpRequest",
         },
