@@ -7,7 +7,7 @@
 价格看板：
 
 ```text
-http://localhost:3000/market
+http://localhost:18888/market
 ```
 
 ## 本地运行
@@ -22,7 +22,7 @@ npm run dev
 后台地址：
 
 ```text
-http://localhost:3000/admin
+http://localhost:18888/admin
 ```
 
 Nuxt 后台按钮通过 API 局部更新和 Varlet Snackbar 提示，不再使用整页刷新的 Server Actions。
@@ -83,7 +83,7 @@ docker compose up -d --build
 服务：
 
 ```text
-web       Nuxt + Varlet 后台和价格看板，监听 3000
+web       Nuxt + Varlet 后台和价格看板，宿主机监听 18888
 collector 定时采集 worker
 postgres  PostgreSQL 数据库
 ```
@@ -109,7 +109,7 @@ http://your-domain/api/health
 ```env
 NODE_ENV="production"
 HOST="127.0.0.1"
-PORT="3000"
+PORT="18888"
 DATABASE_URL="postgresql://markscan:strong-password@127.0.0.1:5432/markscan?schema=public"
 AUTH_SECRET="replace-with-64-hex-random-secret"
 ```
@@ -142,6 +142,8 @@ npm run collector
 https://your-domain/api/health
 ```
 
+如果在 Windows 本地打包后上传到 Debian/Ubuntu 服务器，必须重新运行 `npx prisma generate` 并重新构建，或确保 `prisma/schema.prisma` 中包含 `debian-openssl-3.0.x` 的 `binaryTargets`，否则 Prisma Query Engine 会出现平台不匹配。
+
 ## 反向代理建议
 
-公网建议用 Nginx/Caddy 反代到 `127.0.0.1:3000`，并启用 HTTPS。后台已经有登录保护，但不要暴露 `.env` 或数据库端口。
+公网建议用 Nginx/Caddy 反代到 `127.0.0.1:18888`，并启用 HTTPS。后台已经有登录保护，但不要暴露 `.env` 或数据库端口。
