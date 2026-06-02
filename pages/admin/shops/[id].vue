@@ -54,34 +54,71 @@
         <var-button :loading="loading.bulkDisable" @click="bulk('disable')">停用全部</var-button>
       </div>
     </div>
+    <div v-if="shop?.listings.length" class="listing-toolbar">
+      <label class="field listing-search">
+        <span class="label">搜索商品</span>
+        <input v-model="listingQuery" class="input" inputmode="search" placeholder="商品名 / 商品 ID / 分类 / 映射名" />
+      </label>
+      <div class="listing-toolbar-meta">
+        <span class="pill">显示 {{ filteredListings.length }} / {{ shop.listings.length }}</span>
+        <var-button v-if="listingQuery" @click="listingQuery = ''">清空</var-button>
+      </div>
+    </div>
     <div v-if="!shop?.listings.length" class="card-pad"><div class="empty">还没有商品。先同步店铺商品。</div></div>
-    <div v-else class="table-wrap">
-      <table class="table">
-        <thead>
-          <tr><th>采集状态</th><th>商品</th><th>分类</th><th>目录价</th><th>库存</th><th>标准商品映射</th><th>时间</th></tr>
-        </thead>
-        <tbody>
-          <tr v-for="listing in shop.listings" :key="listing.id">
-            <td>
-              <div class="collect-cell">
-                <span :class="listing.enabled ? 'collect-status is-enabled' : 'collect-status is-disabled'">{{ listing.enabled ? '采集中' : '已停用' }}</span>
-                <var-button :class="listing.enabled ? 'listing-toggle disable-toggle' : 'listing-toggle enable-toggle'" :loading="loading.toggle[listing.id]" @click="toggleListing(listing)">{{ listing.enabled ? '停用采集' : '启用采集' }}</var-button>
-              </div>
-            </td>
-            <td><div class="stack"><a :href="listing.link" target="_blank" rel="noreferrer"><strong>{{ listing.title }}</strong></a><span class="muted">{{ listing.goodsKey }}</span></div></td>
-            <td><span class="pill">{{ listing.category?.name || listing.goodsType }}</span></td>
-            <td><span class="price">{{ money(listing.price) }}</span></td>
-            <td><span :class="listing.isAvailable ? 'pill ok' : 'pill bad'">{{ listing.stock ?? '未知' }}</span></td>
-            <td>
-              <form class="inline-form" @submit.prevent="mapListing(listing)">
-                <input v-model="listing.standardProductName" class="input wide-input" placeholder="例如 ChatGPT Plus 日抛" />
-                <var-button native-type="submit" :loading="loading.map[listing.id]">保存</var-button>
-              </form>
-            </td>
-            <td><div class="stack"><span>见到 {{ formatDate(listing.lastSeenAt) }}</span><span class="muted">快照 {{ formatDate(listing.lastSnapshotAt) }}</span></div></td>
-          </tr>
-        </tbody>
-      </table>
+    <div v-else-if="!filteredListings.length" class="card-pad"><div class="empty">没有匹配商品，换个关键词试试。</div></div>
+    <div v-else>
+      <div class="table-wrap listing-table-wrap">
+        <table class="table">
+          <thead>
+            <tr><th>采集状态</th><th>商品</th><th>分类</th><th>目录价</th><th>库存</th><th>标准商品映射</th><th>时间</th></tr>
+          </thead>
+          <tbody>
+            <tr v-for="listing in filteredListings" :key="listing.id">
+              <td>
+                <div class="collect-cell">
+                  <span :class="listing.enabled ? 'collect-status is-enabled' : 'collect-status is-disabled'">{{ listing.enabled ? '采集中' : '已停用' }}</span>
+                  <var-button :class="listing.enabled ? 'listing-toggle disable-toggle' : 'listing-toggle enable-toggle'" :loading="loading.toggle[listing.id]" @click="toggleListing(listing)">{{ listing.enabled ? '停用采集' : '启用采集' }}</var-button>
+                </div>
+              </td>
+              <td><div class="stack"><a :href="listing.link" target="_blank" rel="noreferrer"><strong>{{ listing.title }}</strong></a><span class="muted">{{ listing.goodsKey }}</span></div></td>
+              <td><span class="pill">{{ listing.category?.name || listing.goodsType }}</span></td>
+              <td><span class="price">{{ money(listing.price) }}</span></td>
+              <td><span :class="listing.isAvailable ? 'pill ok' : 'pill bad'">{{ listing.stock ?? '未知' }}</span></td>
+              <td>
+                <form class="inline-form" @submit.prevent="mapListing(listing)">
+                  <input v-model="listing.standardProductName" class="input wide-input" placeholder="例如 ChatGPT Plus 日抛" />
+                  <var-button native-type="submit" :loading="loading.map[listing.id]">保存</var-button>
+                </form>
+              </td>
+              <td><div class="stack"><span>见到 {{ formatDate(listing.lastSeenAt) }}</span><span class="muted">快照 {{ formatDate(listing.lastSnapshotAt) }}</span></div></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="listing-card-list">
+        <article v-for="listing in filteredListings" :key="`mobile-${listing.id}`" class="listing-card">
+          <div class="listing-card-top">
+            <div class="stack">
+              <a :href="listing.link" target="_blank" rel="noreferrer"><strong>{{ listing.title }}</strong></a>
+              <span class="muted">{{ listing.goodsKey }}</span>
+            </div>
+            <span :class="listing.enabled ? 'collect-status is-enabled' : 'collect-status is-disabled'">{{ listing.enabled ? '采集中' : '已停用' }}</span>
+          </div>
+          <div class="listing-card-meta">
+            <span class="pill">{{ listing.category?.name || listing.goodsType }}</span>
+            <span class="price">{{ money(listing.price) }}</span>
+            <span :class="listing.isAvailable ? 'pill ok' : 'pill bad'">库存 {{ listing.stock ?? '未知' }}</span>
+          </div>
+          <form class="inline-form listing-card-map" @submit.prevent="mapListing(listing)">
+            <input v-model="listing.standardProductName" class="input" placeholder="标准商品映射" />
+            <var-button native-type="submit" :loading="loading.map[listing.id]">保存</var-button>
+          </form>
+          <div class="listing-card-actions">
+            <var-button :class="listing.enabled ? 'listing-toggle disable-toggle' : 'listing-toggle enable-toggle'" :loading="loading.toggle[listing.id]" @click="toggleListing(listing)">{{ listing.enabled ? '停用采集' : '启用采集' }}</var-button>
+          </div>
+          <div class="muted listing-card-time">见到 {{ formatDate(listing.lastSeenAt) }} / 快照 {{ formatDate(listing.lastSnapshotAt) }}</div>
+        </article>
+      </div>
     </div>
   </section>
 
@@ -139,9 +176,23 @@ const loading = reactive({
   map: {} as Record<string, boolean>
 });
 const apiFetch = $fetch as <T = any>(request: string, options?: any) => Promise<T>;
+const listingQuery = ref("");
 
 const shop = computed(() => data.value?.shop);
 const enabledCount = computed(() => shop.value?.listings.filter((item: any) => item.enabled).length || 0);
+const filteredListings = computed(() => {
+  const listings = shop.value?.listings || [];
+  const query = normalizeSearch(listingQuery.value);
+  if (!query) return listings;
+  return listings.filter((listing: any) => [
+    listing.title,
+    listing.goodsKey,
+    listing.goodsType,
+    listing.category?.name,
+    listing.standardProduct?.name,
+    listing.standardProductName
+  ].some((value) => normalizeSearch(value).includes(query)));
+});
 
 onMounted(() => {
   refreshTimer = setInterval(() => {
@@ -164,6 +215,7 @@ watchEffect(() => {
 });
 
 function showNotice(message: string, type: NoticeType = "success") { notice.message = message; notice.type = type; notice.show = true; }
+function normalizeSearch(value: unknown) { return String(value ?? "").trim().toLowerCase(); }
 function money(value?: number | null) { return value === null || value === undefined ? "-" : `¥${value}`; }
 function formatDate(value?: string | Date | null) { return value ? new Intl.DateTimeFormat("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date(value)) : "-"; }
 function statusClass(status: string) { return status === "success" ? "pill ok" : status === "failed" ? "pill bad" : "pill warn"; }
