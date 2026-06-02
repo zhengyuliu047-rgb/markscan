@@ -8,11 +8,11 @@
       <form class="login-form" @submit.prevent="login">
         <label class="field">
           <span class="label">账号</span>
-          <var-input v-model="form.username" placeholder="admin" />
+          <input v-model="form.username" class="input" placeholder="admin" required />
         </label>
         <label class="field">
           <span class="label">密码</span>
-          <var-input v-model="form.password" type="password" placeholder="请输入密码" />
+          <input v-model="form.password" type="password" class="input" placeholder="请输入密码" required />
         </label>
         <var-button type="primary" block native-type="submit" :loading="loading">进入后台</var-button>
       </form>

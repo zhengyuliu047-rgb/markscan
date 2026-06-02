@@ -18,7 +18,7 @@
         <p>只展示已有采集快照的商品；同步目录价不会作为行情价展示。</p>
       </div>
       <form class="market-search" @submit.prevent="search">
-        <input v-model="keyword" class="input" placeholder="搜索商品、SKU、店铺" />
+        <input v-model="keyword" class="input" placeholder="输入搜索关键词..." @input="onSearchInput" />
         <var-button type="primary" native-type="submit">搜索</var-button>
       </form>
     </section>
@@ -132,6 +132,14 @@ const route = useRoute();
 const router = useRouter();
 const keyword = ref(String(route.query.q ?? ""));
 const { data, refresh } = await useFetch<any>("/api/market", { query: computed(() => ({ q: route.query.q || "" })) });
+
+let debounceTimer: any = null;
+function onSearchInput() {
+  if (debounceTimer) clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(() => {
+    search();
+  }, 300);
+}
 
 function money(value?: number | null) {
   return value === null || value === undefined ? "-" : `¥${value}`;

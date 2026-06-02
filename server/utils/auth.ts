@@ -72,7 +72,7 @@ export function getAdminSession(event: H3Event) {
 
 export function requireAdmin(event: H3Event) {
   const session = getAdminSession(event);
-  if (!session) throw createError({ statusCode: 401, statusMessage: "Unauthorized" });
+  if (!session) throw createError({ statusCode: 401, message: "Unauthorized" });
   return session;
 }
 

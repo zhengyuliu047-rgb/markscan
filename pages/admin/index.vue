@@ -22,13 +22,14 @@
     </div>
     <div class="card-pad">
       <form class="form-grid" @submit.prevent="createShop">
-        <label class="field"><span class="label">店铺 URL</span><input v-model="form.shopUrl" class="input" placeholder="https://catfk.com/shop/UKRQM9XM" /></label>
-        <label class="field"><span class="label">渠道</span><select v-model="form.channel" class="select"><option value="ldxp">LDXP</option><option value="catfk">CatFK</option></select></label>
+        <label class="field"><span class="label">店铺 URL</span><input v-model="form.shopUrl" class="input" placeholder="https://pay.qxvx.cn/item/iwsoql" /></label>
+        <div class="field"><span class="label">渠道</span><var-select v-model="form.channel" class="channel-select" :class="{ 'locked-field': usingShopUrl }" :options="channelOptions" variant="outlined" :line="false" :hint="false" :readonly="usingShopUrl" text-color="#f0eadc" focus-color="#d5ff5f" blur-color="#33382f" /></div>
         <label class="field"><span class="label">名称</span><input v-model="form.name" class="input" placeholder="可空" /></label>
-        <label class="field"><span class="label">Token</span><input v-model="form.token" class="input" placeholder="7N1H7DQI" /></label>
-        <label class="field"><span class="label">Base URL</span><input v-model="form.baseUrl" class="input" placeholder="https://pay.ldxp.cn" /></label>
+        <label class="field"><span class="label">Token</span><input v-model="form.token" class="input" :readonly="usingShopUrl" placeholder="7N1H7DQI" /></label>
+        <label class="field"><span class="label">Base URL</span><input v-model="form.baseUrl" class="input" :readonly="usingShopUrl" placeholder="https://pay.ldxp.cn" /></label>
         <label class="field"><span class="label">间隔</span><input v-model.number="form.intervalMinutes" class="input" type="number" min="1" /></label>
         <var-button type="primary" native-type="submit" :loading="loading.create">添加店铺</var-button>
+        <div v-if="usingShopUrl" class="form-note">已从店铺 URL 自动解析渠道、Token 和 Base URL。要手动填写，请先清空店铺 URL。</div>
       </form>
     </div>
   </section>
@@ -47,7 +48,7 @@
             <td><div class="stack"><span>{{ shop._count.listings }} SKU</span><span class="muted">{{ shop._count.categories }} 分类 / {{ shop._count.snapshots }} 快照</span></div></td>
             <td><div class="stack"><span>同步 {{ formatDate(shop.lastSyncedAt) }}</span><span class="muted">采集 {{ formatDate(shop.lastCollectedAt) }}</span></div></td>
             <td class="muted">{{ shop.lastError || '-' }}</td>
-            <td><div class="actions"><NuxtLink class="pill" :to="`/admin/shops/${shop.id}`">管理</NuxtLink><var-button @click="syncShop(shop.id)">同步</var-button><var-button type="primary" @click="collectShop(shop.id)">采集</var-button></div></td>
+            <td class="action-cell"><div class="actions"><NuxtLink :to="`/admin/shops/${shop.id}`" custom v-slot="{ navigate }"><var-button size="small" @click="() => navigate()">管理</var-button></NuxtLink><var-button size="small" :loading="loading.sync[shop.id]" @click="syncShop(shop.id)">同步</var-button><var-button size="small" type="primary" :loading="loading.collect[shop.id]" @click="collectShop(shop.id)">采集</var-button></div></td>
           </tr>
         </tbody>
       </table>
@@ -75,17 +76,62 @@
 definePageMeta({ layout: "admin", middleware: "admin" });
 
 const { data, refresh } = await useFetch<any>("/api/admin/overview", { credentials: "include" });
-const loading = reactive({ create: false });
+const loading = reactive({ create: false, sync: {} as Record<string, boolean>, collect: {} as Record<string, boolean> });
 const form = reactive({ shopUrl: "", channel: "ldxp", name: "", token: "", baseUrl: "https://pay.ldxp.cn", intervalMinutes: 10 });
+const channelOptions = [{ label: "LDXP", value: "ldxp" }, { label: "CatFK", value: "catfk" }];
+const channelDefaultBaseUrls: Record<ShopChannel, string> = { ldxp: "https://pay.ldxp.cn", catfk: "https://catfk.com" };
 type NoticeType = "success" | "error";
+type ShopChannel = "ldxp" | "catfk";
+type ParsedShopUrl = { channel: ShopChannel; token: string; baseUrl: string };
 const notice = reactive<{ show: boolean; type: NoticeType; message: string }>({ show: false, type: "success", message: "" });
 const apiFetch = $fetch as <T = any>(request: string, options?: any) => Promise<T>;
+const parsedShopUrl = computed(() => parseShopUrlInput(form.shopUrl));
+const usingShopUrl = computed(() => Boolean(parsedShopUrl.value));
+
+watch(parsedShopUrl, (parsed) => {
+  if (parsed) applyParsedShopUrl(parsed);
+}, { immediate: true });
+
+watch(() => form.channel, (channel) => {
+  if (usingShopUrl.value) return;
+  if (!form.baseUrl || Object.values(channelDefaultBaseUrls).includes(form.baseUrl)) {
+    form.baseUrl = channelDefaultBaseUrls[channel as ShopChannel];
+  }
+});
+
+function inferChannelFromHost(hostname: string): ShopChannel {
+  return hostname.toLowerCase().includes("catfk.com") ? "catfk" : "ldxp";
+}
+
+function parseShopUrlInput(value: string): ParsedShopUrl | null {
+  const raw = value.trim();
+  if (!raw) return null;
+  try {
+    const url = new URL(raw);
+    const match = url.pathname.match(/\/(?:shop|item)\/([^/?#]+)/i);
+    if (!match?.[1]) return null;
+    return { channel: inferChannelFromHost(url.hostname), token: match[1], baseUrl: `${url.protocol}//${url.host}` };
+  } catch {
+    return null;
+  }
+}
+
+function applyParsedShopUrl(parsed: ParsedShopUrl) {
+  form.channel = parsed.channel;
+  form.token = parsed.token;
+  form.baseUrl = parsed.baseUrl;
+}
+
+function normalizeCreateShopForm() {
+  const parsed = parsedShopUrl.value;
+  if (parsed) applyParsedShopUrl(parsed);
+}
 
 function showNotice(message: string, type: NoticeType = "success") { notice.message = message; notice.type = type; notice.show = true; }
 function formatDate(value?: string | Date | null) { return value ? new Intl.DateTimeFormat("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date(value)) : "-"; }
 function statusClass(status: string) { return status === "success" ? "pill ok" : status === "failed" ? "pill bad" : "pill warn"; }
 async function callAction<T>(fn: () => Promise<T>) { try { const result: any = await fn(); showNotice(result?.message || "操作完成"); await refresh(); return result; } catch (error: any) { showNotice(error?.data?.message || error?.statusMessage || "操作失败", "error"); } }
-async function createShop() { loading.create = true; try { const result: any = await callAction(() => apiFetch("/api/admin/shops", { method: "POST", body: form })); if (result?.shopId) await navigateTo(`/admin/shops/${result.shopId}`); } finally { loading.create = false; } }
-async function syncShop(id: string) { await callAction(() => apiFetch(`/api/admin/shops/${id}/sync`, { method: "POST" })); }
-async function collectShop(id: string) { await callAction(() => apiFetch(`/api/admin/shops/${id}/collect`, { method: "POST" })); }
+async function createShop() { loading.create = true; try { normalizeCreateShopForm(); const result: any = await callAction(() => apiFetch("/api/admin/shops", { method: "POST", body: form })); if (result?.shopId) await navigateTo(`/admin/shops/${result.shopId}`); } finally { loading.create = false; } }
+async function syncShop(id: string) { loading.sync[id] = true; try { await callAction(() => apiFetch(`/api/admin/shops/${id}/sync`, { method: "POST" })); } finally { loading.sync[id] = false; } }
+async function collectShop(id: string) { loading.collect[id] = true; try { await callAction(() => apiFetch(`/api/admin/shops/${id}/collect`, { method: "POST" })); } finally { loading.collect[id] = false; } }
 </script>

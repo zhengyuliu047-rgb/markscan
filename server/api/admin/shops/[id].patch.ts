@@ -7,7 +7,7 @@ export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, "id")!;
   const body = await readBody<{ name?: string; baseUrl?: string; intervalMinutes?: number; active?: boolean }>(event);
   const baseUrl = String(body.baseUrl ?? "").trim();
-  if (!baseUrl) throw createError({ statusCode: 400, statusMessage: "Base URL 不能为空" });
+  if (!baseUrl) throw createError({ statusCode: 400, message: "Base URL 不能为空" });
 
   await db.shop.update({
     where: { id },

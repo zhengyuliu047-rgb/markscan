@@ -6,9 +6,10 @@
       <p>{{ shop?.baseUrl }}/shop/{{ shop?.token }}</p>
     </div>
     <div class="actions">
-      <NuxtLink class="pill" to="/admin">返回</NuxtLink>
-      <var-button @click="syncShop">同步商品</var-button>
-      <var-button type="primary" @click="collectShop">立即采集</var-button>
+      <NuxtLink to="/admin" custom v-slot="{ navigate }"><var-button size="small" @click="() => navigate()">返回</var-button></NuxtLink>
+      <var-button size="small" :loading="loading.sync" @click="syncShop">同步商品</var-button>
+      <var-button size="small" type="primary" :loading="loading.collect" @click="collectShop">立即采集</var-button>
+      <var-button size="small" type="danger" :loading="loading.delete" @click="deleteShop">删除店铺</var-button>
     </div>
   </section>
 
@@ -21,15 +22,15 @@
   <section class="grid cols-2" style="margin-bottom: 16px">
     <div class="card">
       <div class="card-header"><div class="card-title">店铺配置</div></div>
-      <div class="card-pad">
-        <form class="grid" @submit.prevent="saveShop">
-          <label class="field"><span class="label">名称</span><input v-model="config.name" class="input" required /></label>
-          <label class="field"><span class="label">Base URL</span><input v-model="config.baseUrl" class="input" required /></label>
-          <label class="field"><span class="label">采集间隔分钟</span><input v-model.number="config.intervalMinutes" class="input" type="number" min="1" /></label>
-          <label class="inline-form"><input v-model="config.active" type="checkbox" /><span>启用定时采集</span></label>
-          <var-button type="primary" native-type="submit">保存配置</var-button>
-        </form>
-      </div>
+    <div class="card-pad">
+      <form class="grid" @submit.prevent="saveShop">
+        <label class="field"><span class="label">名称</span><input v-model="config.name" class="input" required /></label>
+        <label class="field"><span class="label">Base URL</span><input v-model="config.baseUrl" class="input" required /></label>
+        <label class="field"><span class="label">采集间隔分钟</span><input v-model.number="config.intervalMinutes" class="input" type="number" min="1" /></label>
+        <label class="inline-form"><input v-model="config.active" type="checkbox" /><span>启用定时采集</span></label>
+        <var-button type="primary" native-type="submit" :loading="loading.save">保存配置</var-button>
+      </form>
+    </div>
     </div>
 
     <div class="card">
@@ -50,19 +51,24 @@
         <div class="muted">同步价只是目录价格；前台行情只展示采集快照。</div>
       </div>
       <div class="actions">
-        <var-button @click="bulk('enable')">启用全部</var-button>
-        <var-button @click="bulk('disable')">停用全部</var-button>
+        <var-button :loading="loading.bulkEnable" @click="bulk('enable')">启用全部</var-button>
+        <var-button :loading="loading.bulkDisable" @click="bulk('disable')">停用全部</var-button>
       </div>
     </div>
     <div v-if="!shop?.listings.length" class="card-pad"><div class="empty">还没有商品。先同步店铺商品。</div></div>
     <div v-else class="table-wrap">
       <table class="table">
         <thead>
-          <tr><th>采集</th><th>商品</th><th>分类</th><th>同步价</th><th>库存</th><th>标准商品映射</th><th>时间</th></tr>
+          <tr><th>采集状态</th><th>商品</th><th>分类</th><th>同步价</th><th>库存</th><th>标准商品映射</th><th>时间</th></tr>
         </thead>
         <tbody>
           <tr v-for="listing in shop.listings" :key="listing.id">
-            <td><var-button @click="toggleListing(listing.id)">{{ listing.enabled ? '停用' : '启用' }}</var-button></td>
+            <td>
+              <div class="collect-cell">
+                <span :class="listing.enabled ? 'collect-status is-enabled' : 'collect-status is-disabled'">{{ listing.enabled ? '采集中' : '已停用' }}</span>
+                <var-button :class="listing.enabled ? 'listing-toggle disable-toggle' : 'listing-toggle enable-toggle'" :loading="loading.toggle[listing.id]" @click="toggleListing(listing)">{{ listing.enabled ? '停用采集' : '启用采集' }}</var-button>
+              </div>
+            </td>
             <td><div class="stack"><a :href="listing.link" target="_blank" rel="noreferrer"><strong>{{ listing.title }}</strong></a><span class="muted">{{ listing.goodsKey }}</span></div></td>
             <td><span class="pill">{{ listing.category?.name || listing.goodsType }}</span></td>
             <td><span class="price">{{ money(listing.price) }}</span></td>
@@ -70,7 +76,7 @@
             <td>
               <form class="inline-form" @submit.prevent="mapListing(listing)">
                 <input v-model="listing.standardProductName" class="input wide-input" placeholder="例如 ChatGPT Plus 日抛" />
-                <var-button native-type="submit">保存</var-button>
+                <var-button native-type="submit" :loading="loading.map[listing.id]">保存</var-button>
               </form>
             </td>
             <td><div class="stack"><span>见到 {{ formatDate(listing.lastSeenAt) }}</span><span class="muted">快照 {{ formatDate(listing.lastSnapshotAt) }}</span></div></td>
@@ -122,6 +128,16 @@ const { data, refresh } = await useFetch<any>(`/api/admin/shops/${id}`, { creden
 type NoticeType = "success" | "error";
 const notice = reactive<{ show: boolean; type: NoticeType; message: string }>({ show: false, type: "success", message: "" });
 const config = reactive({ name: "", baseUrl: "", intervalMinutes: 10, active: true });
+const loading = reactive({
+  save: false,
+  sync: false,
+  collect: false,
+  delete: false,
+  bulkEnable: false,
+  bulkDisable: false,
+  toggle: {} as Record<string, boolean>,
+  map: {} as Record<string, boolean>
+});
 const apiFetch = $fetch as <T = any>(request: string, options?: any) => Promise<T>;
 
 const shop = computed(() => data.value?.shop);
@@ -142,11 +158,47 @@ function showNotice(message: string, type: NoticeType = "success") { notice.mess
 function money(value?: number | null) { return value === null || value === undefined ? "-" : `¥${value}`; }
 function formatDate(value?: string | Date | null) { return value ? new Intl.DateTimeFormat("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date(value)) : "-"; }
 function statusClass(status: string) { return status === "success" ? "pill ok" : status === "failed" ? "pill bad" : "pill warn"; }
-async function callAction(fn: () => Promise<any>) { try { const result = await fn(); showNotice(result?.message || "操作完成"); await refresh(); return result; } catch (error: any) { showNotice(error?.data?.message || error?.statusMessage || "操作失败", "error"); } }
-async function saveShop() { await callAction(() => apiFetch(`/api/admin/shops/${id}`, { method: "PATCH", body: config })); }
-async function syncShop() { await callAction(() => apiFetch(`/api/admin/shops/${id}/sync`, { method: "POST" })); }
-async function collectShop() { await callAction(() => apiFetch(`/api/admin/shops/${id}/collect`, { method: "POST" })); }
-async function bulk(mode: "enable" | "disable") { await callAction(() => apiFetch(`/api/admin/shops/${id}/listings/bulk`, { method: "POST", body: { mode } })); }
-async function toggleListing(listingId: string) { await callAction(() => apiFetch(`/api/admin/listings/${listingId}/toggle`, { method: "POST" })); }
-async function mapListing(listing: any) { await callAction(() => apiFetch(`/api/admin/listings/${listing.id}/map`, { method: "POST", body: { standardProductName: listing.standardProductName } })); }
+async function callAction(fn: () => Promise<any>, options: { refresh?: boolean } = {}) { try { const result = await fn(); showNotice(result?.message || "操作完成"); if (options.refresh !== false) await refresh(); return result; } catch (error: any) { showNotice(error?.data?.message || error?.statusMessage || "操作失败", "error"); } }
+async function saveShop() { loading.save = true; try { await callAction(() => apiFetch(`/api/admin/shops/${id}`, { method: "PATCH", body: config })); } finally { loading.save = false; } }
+async function deleteShop() {
+  if (!confirm("确定要删除该店铺及其所有商品、采集历史和快照数据吗？此操作无法撤销。")) return;
+  loading.delete = true;
+  try {
+    const result = await callAction(() => apiFetch(`/api/admin/shops/${id}`, { method: "DELETE" }));
+    if (result?.ok) {
+      await navigateTo("/admin");
+    }
+  } finally {
+    loading.delete = false;
+  }
+}
+async function syncShop() { loading.sync = true; try { await callAction(() => apiFetch(`/api/admin/shops/${id}/sync`, { method: "POST" })); } finally { loading.sync = false; } }
+async function collectShop() { loading.collect = true; try { await callAction(() => apiFetch(`/api/admin/shops/${id}/collect`, { method: "POST" })); } finally { loading.collect = false; } }
+async function bulk(mode: "enable" | "disable") {
+  if (mode === "enable") loading.bulkEnable = true; else loading.bulkDisable = true;
+  try {
+    const result = await callAction(() => apiFetch(`/api/admin/shops/${id}/listings/bulk`, { method: "POST", body: { mode } }), { refresh: false });
+    if (result?.ok && shop.value?.listings) {
+      const enabled = mode === "enable";
+      for (const listing of shop.value.listings) listing.enabled = enabled;
+    }
+    await refresh();
+  } finally {
+    if (mode === "enable") loading.bulkEnable = false; else loading.bulkDisable = false;
+  }
+}
+async function toggleListing(listing: any) {
+  loading.toggle[listing.id] = true;
+  const previous = listing.enabled;
+  listing.enabled = !previous;
+  try {
+    const result = await callAction(() => apiFetch(`/api/admin/listings/${listing.id}/toggle`, { method: "POST" }), { refresh: false });
+    if (result?.listing) listing.enabled = result.listing.enabled;
+    if (!result?.ok) listing.enabled = previous;
+    await refresh();
+  } finally {
+    loading.toggle[listing.id] = false;
+  }
+}
+async function mapListing(listing: any) { loading.map[listing.id] = true; try { await callAction(() => apiFetch(`/api/admin/listings/${listing.id}/map`, { method: "POST", body: { standardProductName: listing.standardProductName } })); } finally { loading.map[listing.id] = false; } }
 </script>

@@ -6,7 +6,7 @@ export default defineEventHandler(async (event) => {
   const password = String(body.password ?? "");
 
   if (!verifyAdminCredentials(username, password)) {
-    throw createError({ statusCode: 401, statusMessage: "账号或密码不正确" });
+    throw createError({ statusCode: 401, message: "账号或密码不正确" });
   }
 
   setAdminSession(event, username);

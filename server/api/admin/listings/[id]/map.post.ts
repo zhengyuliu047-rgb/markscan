@@ -7,7 +7,7 @@ export default defineEventHandler(async (event) => {
   const body = await readBody<{ standardProductName?: string }>(event);
   const name = String(body.standardProductName ?? "").trim();
   const listing = await db.listing.findUnique({ where: { id } });
-  if (!listing) throw createError({ statusCode: 404, statusMessage: "商品不存在" });
+  if (!listing) throw createError({ statusCode: 404, message: "商品不存在" });
 
   if (!name) {
     await db.listing.update({ where: { id }, data: { standardProductId: null } });

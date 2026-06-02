@@ -14,9 +14,9 @@ export function inferChannelFromBaseUrl(baseUrl: string): ShopChannel {
 
 export function parseShopUrl(rawUrl: string) {
   const url = new URL(rawUrl.trim());
-  const match = url.pathname.match(/\/shop\/([^/?#]+)/i);
+  const match = url.pathname.match(/\/(?:shop|item)\/([^/?#]+)/i);
   if (!match?.[1]) {
-    throw new Error("店铺 URL 格式应类似 https://domain/shop/TOKEN");
+    throw new Error("店铺 URL 格式应类似 https://domain/shop/TOKEN 或 https://domain/item/TOKEN");
   }
 
   return {

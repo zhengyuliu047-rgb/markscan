@@ -22,6 +22,6 @@ export default defineEventHandler(async (event) => {
     }),
   ]);
 
-  if (!shop) throw createError({ statusCode: 404, statusMessage: "店铺不存在" });
+  if (!shop) throw createError({ statusCode: 404, message: "店铺不存在" });
   return { shop, recentRuns, recentSnapshots };
 });

@@ -14,9 +14,16 @@ export default defineEventHandler(async (event) => {
   }>(event);
 
   const shopUrl = String(body.shopUrl ?? "").trim();
-  const parsed = shopUrl ? parseShopUrl(shopUrl) : null;
+  let parsed: ReturnType<typeof parseShopUrl> | null = null;
+  if (shopUrl) {
+    try {
+      parsed = parseShopUrl(shopUrl);
+    } catch (error: any) {
+      throw createError({ statusCode: 400, message: error?.message || "店铺 URL 格式不正确" });
+    }
+  }
   const token = parsed?.token ?? String(body.token ?? "").trim();
-  if (!token) throw createError({ statusCode: 400, statusMessage: "Token 不能为空" });
+  if (!token) throw createError({ statusCode: 400, message: "Token 不能为空" });
 
   const baseUrl = parsed?.baseUrl ?? String(body.baseUrl ?? "https://pay.ldxp.cn").trim();
   const channel = parsed?.channel ?? (isShopChannel(String(body.channel ?? "")) ? String(body.channel) : inferChannelFromBaseUrl(baseUrl));
