@@ -1,7 +1,7 @@
 export default defineNuxtConfig({
   compatibilityDate: "2026-06-02",
   devtools: { enabled: true },
-  css: ["@varlet/ui/es/style", "~/assets/styles.css"],
+  css: ["@varlet/ui/lib/varlet.css", "~/assets/styles.css"],
   nitro: {
     preset: "node-server",
   },
