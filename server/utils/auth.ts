@@ -1,5 +1,6 @@
-import { createHmac, randomUUID, scryptSync, timingSafeEqual } from "crypto";
+import { createHmac, randomBytes, randomUUID, scryptSync, timingSafeEqual } from "crypto";
 import type { H3Event } from "h3";
+import db from "./db";
 
 const SESSION_COOKIE = "markscan_session";
 const SESSION_MAX_AGE = 60 * 60 * 24 * 7;
@@ -8,19 +9,19 @@ type SessionPayload = { username: string; exp: number; nonce: string };
 
 function getAuthSecret() {
   const config = useRuntimeConfig();
-  const secret = config.authSecret || process.env.AUTH_SECRET;
+  const secret = process.env.AUTH_SECRET || config.authSecret;
   if (!secret || secret.length < 32) throw new Error("AUTH_SECRET must be set and at least 32 characters long");
   return secret;
 }
 
-function getAdminUsername() {
+function getEnvAdminUsername() {
   const config = useRuntimeConfig();
-  return config.adminUsername || process.env.ADMIN_USERNAME || "admin";
+  return process.env.ADMIN_USERNAME || config.adminUsername || "admin";
 }
 
-function getAdminPasswordHash() {
+function getEnvAdminPasswordHash() {
   const config = useRuntimeConfig();
-  return config.adminPasswordHash || process.env.ADMIN_PASSWORD_HASH || "";
+  return process.env.ADMIN_PASSWORD_HASH || config.adminPasswordHash || "";
 }
 
 function sign(value: string) {
@@ -34,17 +35,30 @@ function safeEqual(left: string, right: string) {
   return timingSafeEqual(leftBuffer, rightBuffer);
 }
 
-function verifyPasswordHash(password: string) {
-  const passwordHash = getAdminPasswordHash();
-  if (!passwordHash) throw new Error("ADMIN_PASSWORD_HASH must be set");
+export function hashPassword(password: string) {
+  const salt = randomBytes(16).toString("hex");
+  const hash = scryptSync(password, salt, 32).toString("hex");
+  return `scrypt:${salt}:${hash}`;
+}
+
+function verifyPasswordHash(password: string, passwordHash: string) {
+  if (!passwordHash) return false;
   const [algorithm, salt, expectedHash] = passwordHash.split(":");
-  if (algorithm !== "scrypt" || !salt || !expectedHash) throw new Error("ADMIN_PASSWORD_HASH must use scrypt:<salt>:<hash> format");
+  if (algorithm !== "scrypt" || !salt || !expectedHash) return false;
   const actualHash = scryptSync(password, salt, Buffer.from(expectedHash, "hex").length).toString("hex");
   return safeEqual(actualHash, expectedHash);
 }
 
-export function verifyAdminCredentials(username: string, password: string) {
-  return safeEqual(username, getAdminUsername()) && verifyPasswordHash(password);
+export async function isSetupComplete() {
+  if (getEnvAdminPasswordHash()) return true;
+  return (await db.adminUser.count()) > 0;
+}
+
+export async function verifyAdminCredentials(username: string, password: string) {
+  const admin = await db.adminUser.findUnique({ where: { username } });
+  if (admin) return verifyPasswordHash(password, admin.passwordHash);
+
+  return safeEqual(username, getEnvAdminUsername()) && verifyPasswordHash(password, getEnvAdminPasswordHash());
 }
 
 export function createSessionToken(username: string) {

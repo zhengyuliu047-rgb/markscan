@@ -1,3 +1,27 @@
+@font-face {
+  font-family: 'HarmonyOS Sans';
+  src: url('./HarmonyOS Sans/HarmonyOS_Sans_SC/HarmonyOS_Sans_SC_Regular.woff2') format('woff2');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'HarmonyOS Sans';
+  src: url('./HarmonyOS Sans/HarmonyOS_Sans_SC/HarmonyOS_Sans_SC_Medium.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'HarmonyOS Sans';
+  src: url('./HarmonyOS Sans/HarmonyOS_Sans_SC/HarmonyOS_Sans_SC_Bold.woff2') format('woff2');
+  font-weight: bold;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
   --bg: #10110f;
   --panel: #181a17;
@@ -33,7 +57,11 @@ body {
     radial-gradient(circle at 0% 12%, rgba(255, 184, 107, 0.08), transparent 28rem),
     linear-gradient(135deg, #11120f 0%, #0d0e0c 100%);
   color: var(--text);
-  font-family: "Aptos", "Segoe UI", sans-serif;
+  font-family: 'HarmonyOS Sans', sans-serif;
+}
+
+input, select, textarea, button {
+  font-family: inherit;
 }
 
 a { color: inherit; text-decoration: none; }
@@ -41,19 +69,19 @@ a { color: inherit; text-decoration: none; }
 .shell { display: grid; grid-template-columns: 260px minmax(0, 1fr); min-height: 100vh; overflow-x: clip; width: 100%; }
 .sidebar { border-right: 1px solid var(--line); background: rgba(16, 17, 15, 0.82); display: flex; flex-direction: column; height: 100vh; min-width: 0; padding: 28px 22px; position: sticky; top: 0; z-index: 20; }
 .brand { border: 1px solid var(--line); background: linear-gradient(145deg, rgba(213, 255, 95, 0.12), rgba(255, 255, 255, 0.02)); border-radius: 22px; padding: 18px; box-shadow: 0 18px 60px var(--shadow); }
-.brand-kicker, .eyebrow, .label, .table th { color: var(--muted); font-family: "Cascadia Mono", Consolas, monospace; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; }
-.brand-title { font-family: Georgia, "Times New Roman", serif; font-size: 30px; line-height: 1; margin-top: 10px; }
+.brand-kicker, .eyebrow, .label, .table th { color: var(--muted); font-family: 'HarmonyOS Sans', sans-serif; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; }
+.brand-title { font-family: 'HarmonyOS Sans', sans-serif; font-size: 30px; line-height: 1; margin-top: 10px; }
 .nav { display: grid; gap: 10px; margin-top: 24px; }
 .nav a { border: 1px solid transparent; border-radius: 16px; color: var(--muted); padding: 12px 14px; }
 .nav a:hover, .nav a.router-link-active { background: var(--panel); border-color: var(--line); color: var(--text); }
 .sidebar-footer { border-top: 1px solid var(--line); display: grid; gap: 10px; margin-top: auto; padding-top: 18px; }
-.sidebar-user { color: var(--text); font-family: "Cascadia Mono", Consolas, monospace; }
+.sidebar-user { color: var(--text); font-family: 'HarmonyOS Sans', sans-serif; }
 .main { min-width: 0; padding: 34px; }
 
 .hero { align-items: flex-start; display: flex; flex-wrap: wrap; gap: 20px; justify-content: space-between; margin-bottom: 24px; min-width: 0; }
 .hero > div:first-child { flex: 1 1 480px; min-width: 0; }
 .hero > .actions { flex: 0 0 auto; justify-content: flex-end; max-width: 100%; }
-.hero h1 { font-family: Georgia, "Times New Roman", serif; font-size: clamp(34px, 5vw, 60px); line-height: 0.95; margin: 8px 0 12px; max-width: 780px; }
+.hero h1 { font-family: 'HarmonyOS Sans', sans-serif; font-size: clamp(34px, 5vw, 60px); line-height: 0.95; margin: 8px 0 12px; max-width: 780px; }
 .hero p { color: var(--muted); margin: 0; max-width: 720px; overflow-wrap: anywhere; }
 .grid { display: grid; gap: 16px; }
 .grid.cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -67,7 +95,7 @@ a { color: inherit; text-decoration: none; }
 .muted { color: var(--muted); }
 .metric { background: linear-gradient(145deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.015)); border: 1px solid var(--line); border-radius: 20px; padding: 18px; }
 .metric.highlight { background: linear-gradient(145deg, rgba(213, 255, 95, 0.16), rgba(255, 255, 255, 0.02)); border-color: rgba(213, 255, 95, 0.34); }
-.metric-value { font-family: "Cascadia Mono", Consolas, monospace; font-size: 30px; margin-top: 10px; }
+.metric-value { font-family: 'HarmonyOS Sans', sans-serif; font-size: 30px; margin-top: 10px; }
 .form-grid { align-items: end; display: grid; gap: 12px; grid-template-columns: minmax(220px, 1.4fr) minmax(120px, 0.75fr) repeat(3, minmax(150px, 1fr)) minmax(90px, 0.55fr) minmax(120px, 0.7fr); }
 .form-grid .input, .form-grid .select, .form-grid .channel-select, .form-grid .var-button { border-radius: 0 !important; }
 .form-grid .var-button { min-height: 46px !important; width: 100%; }
@@ -86,7 +114,7 @@ a { color: inherit; text-decoration: none; }
 .table .muted, .table a, .table strong { overflow-wrap: anywhere; }
 .action-cell { white-space: nowrap; width: 1%; }
 .stack { display: grid; gap: 4px; min-width: 0; }
-.pill { background: rgba(255, 255, 255, 0.035); border: 1px solid var(--line); border-radius: 999px; color: var(--muted); display: inline-flex; font-family: "Cascadia Mono", Consolas, monospace; font-size: 12px; padding: 5px 9px; width: fit-content; }
+.pill { background: rgba(255, 255, 255, 0.035); border: 1px solid var(--line); border-radius: 999px; color: var(--muted); display: inline-flex; font-family: 'HarmonyOS Sans', sans-serif; font-size: 12px; padding: 5px 9px; width: fit-content; }
 .actions .pill { color: var(--text); }
 .shell .input, .shell .select, .shell .var-button, .shell .pill { border-radius: 0 !important; }
 .shell .input, .shell .select {
@@ -141,7 +169,7 @@ a { color: inherit; text-decoration: none; }
 .var-select__scroller .var-option + .var-option { border-top: 1px solid rgba(240, 234, 220, 0.08); }
 .var-select__scroller .var-option__text {
   color: inherit !important;
-  font-family: "Cascadia Mono", Consolas, monospace !important;
+  font-family: 'HarmonyOS Sans', sans-serif !important;
   font-size: 13px !important;
   font-weight: 700 !important;
 }
@@ -160,7 +188,7 @@ a { color: inherit; text-decoration: none; }
   border: 1px solid rgba(240, 234, 220, 0.18) !important;
   color: var(--text) !important;
   display: inline-flex !important;
-  font-family: "Cascadia Mono", Consolas, monospace !important;
+  font-family: 'HarmonyOS Sans', sans-serif !important;
   font-size: 12px !important;
   font-weight: 700 !important;
   height: 36px !important;
@@ -185,7 +213,7 @@ a { color: inherit; text-decoration: none; }
   min-width: 84px;
 }
 .collect-cell { align-items: center; display: inline-flex; gap: 8px; min-width: max-content; }
-.collect-status { align-items: center; border: 1px solid var(--line); display: inline-flex; font-family: "Cascadia Mono", Consolas, monospace; font-size: 12px; font-weight: 800; height: 34px; justify-content: center; min-width: 62px; padding: 0 10px; }
+.collect-status { align-items: center; border: 1px solid var(--line); display: inline-flex; font-family: 'HarmonyOS Sans', sans-serif; font-size: 12px; font-weight: 800; height: 34px; justify-content: center; min-width: 62px; padding: 0 10px; }
 .collect-status.is-enabled { background: rgba(157, 245, 138, 0.12); border-color: rgba(157, 245, 138, 0.45); color: var(--ok); }
 .collect-status.is-disabled { background: rgba(255, 107, 107, 0.1); border-color: rgba(255, 107, 107, 0.42); color: var(--danger); }
 .shell .enable-toggle {
@@ -201,7 +229,7 @@ a { color: inherit; text-decoration: none; }
 .pill.ok { border-color: rgba(157, 245, 138, 0.35); color: var(--ok); }
 .pill.bad { border-color: rgba(255, 107, 107, 0.35); color: var(--danger); }
 .pill.warn { border-color: rgba(255, 184, 107, 0.35); color: var(--accent-2); }
-.price { color: var(--accent); font-family: "Cascadia Mono", Consolas, monospace; font-weight: 800; }
+.price { color: var(--accent); font-family: 'HarmonyOS Sans', sans-serif; font-weight: 800; }
 .empty { border: 1px dashed var(--line); border-radius: 22px; color: var(--muted); padding: 28px; text-align: center; }
 .wide-input { min-width: 240px; }
 .inline-form { align-items: center; display: inline-flex; gap: 8px; }
@@ -209,12 +237,12 @@ a { color: inherit; text-decoration: none; }
 .public-shell { margin: 0 auto; max-width: 1480px; padding: 22px; }
 .public-topbar { align-items: center; background: rgba(16, 17, 15, 0.78); border: 1px solid var(--line); border-radius: 24px; display: flex; justify-content: space-between; margin-bottom: 22px; padding: 14px 16px; position: sticky; top: 14px; z-index: 10; }
 .public-logo { align-items: baseline; display: inline-flex; gap: 10px; }
-.public-logo span { color: var(--accent); font-family: "Cascadia Mono", Consolas, monospace; font-size: 12px; letter-spacing: 0.16em; }
-.public-logo strong { font-family: Georgia, "Times New Roman", serif; font-size: 22px; }
+.public-logo span { color: var(--accent); font-family: 'HarmonyOS Sans', sans-serif; font-size: 12px; letter-spacing: 0.16em; }
+.public-logo strong { font-family: 'HarmonyOS Sans', sans-serif; font-size: 22px; }
 .public-nav { display: flex; gap: 8px; }
 .public-nav a { border: 1px solid var(--line); border-radius: 999px; color: var(--muted); padding: 9px 13px; }
 .market-hero { align-items: end; display: grid; gap: 20px; grid-template-columns: minmax(0, 1fr) 420px; margin: 42px 0 18px; }
-.market-hero h1 { font-family: Georgia, "Times New Roman", serif; font-size: clamp(42px, 7vw, 92px); letter-spacing: -0.06em; line-height: 0.86; margin: 10px 0 18px; max-width: 900px; }
+.market-hero h1 { font-family: 'HarmonyOS Sans', sans-serif; font-size: clamp(42px, 7vw, 92px); letter-spacing: -0.06em; line-height: 0.86; margin: 10px 0 18px; max-width: 900px; }
 .market-hero p { color: var(--muted); margin: 0; max-width: 760px; }
 .market-search { background: rgba(24, 26, 23, 0.84); border: 1px solid var(--line); border-radius: 22px; color: var(--text); display: grid; gap: 10px; padding: 12px; }
 .market-search .input { background: #0c0f0b; color: var(--text); }
@@ -240,8 +268,10 @@ a { color: inherit; text-decoration: none; }
 
 .login-screen { align-items: center; display: grid; min-height: 100vh; padding: 24px; place-items: center; }
 .login-card { background: rgba(24, 26, 23, 0.92); border: 1px solid var(--line); border-radius: 30px; box-shadow: 0 28px 90px var(--shadow); max-width: 460px; padding: 30px; width: 100%; }
-.login-card h1 { font-family: Georgia, "Times New Roman", serif; font-size: 44px; line-height: 0.95; margin: 8px 0 12px; }
+.login-card h1 { font-family: 'HarmonyOS Sans', sans-serif; font-size: 44px; line-height: 0.95; margin: 8px 0 12px; }
 .login-form { display: grid; gap: 14px; margin-top: 24px; }
+.setup-card { max-width: 540px; }
+.setup-toggle { color: var(--text); }
 
 .var-button {
   --button-primary-color: #171a10;

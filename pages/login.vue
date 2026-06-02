@@ -1,9 +1,9 @@
 <template>
   <main class="login-screen">
     <section class="login-card">
-      <div class="eyebrow">Admin access</div>
+      <div class="eyebrow">后台登录</div>
       <h1>登录采集后台</h1>
-      <p class="muted">后台操作已迁移为 Nuxt + Varlet 客户端交互，不再整页刷新。</p>
+      <p class="muted">登录后可管理店铺、启用商品采集并查看轮询任务。</p>
 
       <form class="login-form" @submit.prevent="login">
         <label class="field">
@@ -30,7 +30,8 @@ const loading = ref(false);
 type NoticeType = "success" | "error";
 const notice = reactive<{ show: boolean; type: NoticeType; message: string }>({ show: false, type: "error", message: "" });
 
-const { data: session } = await useFetch<{ authenticated: boolean }>("/api/auth/session", { credentials: "include" });
+const { data: session } = await useFetch<{ authenticated: boolean; initialized: boolean }>("/api/auth/session", { credentials: "include" });
+if (session.value && !session.value.initialized) await navigateTo("/setup");
 if (session.value?.authenticated) await navigateTo("/admin");
 
 function showNotice(message: string, type: NoticeType = "error") {

@@ -16,7 +16,7 @@
   <section class="grid cols-3" style="margin-bottom: 16px">
     <div class="metric"><div class="label">Catalog</div><div class="metric-value">{{ shop?.listings.length || 0 }}</div><div class="muted">已同步 SKU</div></div>
     <div class="metric"><div class="label">Tracked</div><div class="metric-value">{{ enabledCount }}</div><div class="muted">已启用采集</div></div>
-    <div class="metric"><div class="label">Interval</div><div class="metric-value">{{ shop?.intervalMinutes || 0 }}m</div><div class="muted">定时采集间隔</div></div>
+    <div class="metric"><div class="label">Queue</div><div class="metric-value">1/min</div><div class="muted">全局轮询速率</div></div>
   </section>
 
   <section class="grid cols-2" style="margin-bottom: 16px">
@@ -26,7 +26,6 @@
       <form class="grid" @submit.prevent="saveShop">
         <label class="field"><span class="label">名称</span><input v-model="config.name" class="input" required /></label>
         <label class="field"><span class="label">Base URL</span><input v-model="config.baseUrl" class="input" required /></label>
-        <label class="field"><span class="label">采集间隔分钟</span><input v-model.number="config.intervalMinutes" class="input" type="number" min="1" /></label>
         <label class="inline-form"><input v-model="config.active" type="checkbox" /><span>启用定时采集</span></label>
         <var-button type="primary" native-type="submit" :loading="loading.save">保存配置</var-button>
       </form>
@@ -48,7 +47,7 @@
     <div class="card-header">
       <div>
         <div class="card-title">商品采集开关</div>
-        <div class="muted">同步价只是目录价格；前台行情只展示采集快照。</div>
+        <div class="muted">目录价仅供后台参考；价格看板以采集快照为准。</div>
       </div>
       <div class="actions">
         <var-button :loading="loading.bulkEnable" @click="bulk('enable')">启用全部</var-button>
@@ -59,7 +58,7 @@
     <div v-else class="table-wrap">
       <table class="table">
         <thead>
-          <tr><th>采集状态</th><th>商品</th><th>分类</th><th>同步价</th><th>库存</th><th>标准商品映射</th><th>时间</th></tr>
+          <tr><th>采集状态</th><th>商品</th><th>分类</th><th>目录价</th><th>库存</th><th>标准商品映射</th><th>时间</th></tr>
         </thead>
         <tbody>
           <tr v-for="listing in shop.listings" :key="listing.id">
@@ -125,9 +124,10 @@ definePageMeta({ layout: "admin", middleware: "admin" });
 const route = useRoute();
 const id = String(route.params.id);
 const { data, refresh } = await useFetch<any>(`/api/admin/shops/${id}`, { credentials: "include" });
+let refreshTimer: ReturnType<typeof setInterval> | null = null;
 type NoticeType = "success" | "error";
 const notice = reactive<{ show: boolean; type: NoticeType; message: string }>({ show: false, type: "success", message: "" });
-const config = reactive({ name: "", baseUrl: "", intervalMinutes: 10, active: true });
+const config = reactive({ name: "", baseUrl: "", active: true });
 const loading = reactive({
   save: false,
   sync: false,
@@ -143,11 +143,20 @@ const apiFetch = $fetch as <T = any>(request: string, options?: any) => Promise<
 const shop = computed(() => data.value?.shop);
 const enabledCount = computed(() => shop.value?.listings.filter((item: any) => item.enabled).length || 0);
 
+onMounted(() => {
+  refreshTimer = setInterval(() => {
+    void refresh();
+  }, 30_000);
+});
+
+onBeforeUnmount(() => {
+  if (refreshTimer) clearInterval(refreshTimer);
+});
+
 watchEffect(() => {
   if (!shop.value) return;
   config.name = shop.value.name;
   config.baseUrl = shop.value.baseUrl;
-  config.intervalMinutes = shop.value.intervalMinutes;
   config.active = shop.value.active;
   for (const listing of shop.value.listings) {
     listing.standardProductName = listing.standardProduct?.name || "";

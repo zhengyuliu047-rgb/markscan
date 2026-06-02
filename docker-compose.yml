@@ -1,30 +1,51 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-markscan}
+      POSTGRES_USER: ${POSTGRES_USER:-markscan}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-markscan}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-markscan} -d $${POSTGRES_DB:-markscan}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
   web:
     build: .
     command: sh -c "npm run migrate:deploy && npm run start"
-    env_file:
-      - .env
     environment:
-      DATABASE_URL: "file:/data/markscan.db"
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-markscan}:${POSTGRES_PASSWORD:-markscan}@postgres:5432/${POSTGRES_DB:-markscan}?schema=public"
+      AUTH_SECRET: "${AUTH_SECRET:-}"
+      ADMIN_USERNAME: "${ADMIN_USERNAME:-}"
+      ADMIN_PASSWORD_HASH: "${ADMIN_PASSWORD_HASH:-}"
+      MARKSCAN_DISABLE_EMBEDDED_COLLECTOR: "1"
       NODE_ENV: "production"
       NEXT_TELEMETRY_DISABLED: "1"
     ports:
       - "3000:3000"
-    volumes:
-      - ./data:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
 
   collector:
     build: .
     command: sh -c "sleep 5 && npm run start:collector"
-    env_file:
-      - .env
     environment:
-      DATABASE_URL: "file:/data/markscan.db"
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-markscan}:${POSTGRES_PASSWORD:-markscan}@postgres:5432/${POSTGRES_DB:-markscan}?schema=public"
+      AUTH_SECRET: "${AUTH_SECRET:-}"
       NODE_ENV: "production"
       NEXT_TELEMETRY_DISABLED: "1"
-    volumes:
-      - ./data:/data
     depends_on:
-      - web
+      postgres:
+        condition: service_healthy
+      web:
+        condition: service_started
     restart: unless-stopped
+
+volumes:
+  postgres_data:

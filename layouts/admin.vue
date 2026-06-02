@@ -8,11 +8,11 @@
 
       <nav class="nav">
         <NuxtLink to="/admin">店铺与采集</NuxtLink>
-        <NuxtLink to="/market">前台行情</NuxtLink>
+        <NuxtLink to="/market">价格看板</NuxtLink>
       </nav>
 
       <div class="sidebar-footer">
-        <div class="label">Signed in</div>
+        <div class="label">当前账号</div>
         <div class="sidebar-user">{{ session?.username || 'admin' }}</div>
         <var-button block @click="logout">退出登录</var-button>
       </div>

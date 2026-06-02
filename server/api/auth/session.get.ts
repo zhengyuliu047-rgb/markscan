@@ -1,6 +1,6 @@
-import { getAdminSession } from "../../utils/auth";
+import { getAdminSession, isSetupComplete } from "../../utils/auth";
 
-export default defineEventHandler((event) => {
+export default defineEventHandler(async (event) => {
   const session = getAdminSession(event);
-  return { authenticated: Boolean(session), username: session?.username ?? null };
+  return { authenticated: Boolean(session), initialized: await isSetupComplete(), username: session?.username ?? null };
 });

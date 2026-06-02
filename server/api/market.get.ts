@@ -1,6 +1,8 @@
 import db from "../utils/db";
 import { getPriorityLabel, getPriorityScore } from "../utils/priority";
 
+const LISTING_DISPLAY_LIMIT = 120;
+
 function getChange(current?: number | null, previous?: number | null) {
   if (current === null || current === undefined || previous === null || previous === undefined) return null;
   return Number((current - previous).toFixed(2));
@@ -36,7 +38,6 @@ export default defineEventHandler(async (event) => {
         snapshots: { orderBy: { sampledAt: "desc" }, take: 2 },
       },
       orderBy: [{ updatedAt: "desc" }],
-      take: 120,
     }),
     db.priceSnapshot.findMany({
       where: { listing: { enabled: true } },
@@ -50,13 +51,15 @@ export default defineEventHandler(async (event) => {
   ]);
 
   const sortedListings = listings.sort((left, right) => {
-    const leftScore = getPriorityScore(left.title, left.standardProduct?.name, left.category?.name);
-    const rightScore = getPriorityScore(right.title, right.standardProduct?.name, right.category?.name);
-    if (leftScore !== rightScore) return rightScore - leftScore;
     const leftLatest = left.snapshots[0];
     const rightLatest = right.snapshots[0];
     if (Boolean(leftLatest?.isAvailable) !== Boolean(rightLatest?.isAvailable)) return leftLatest?.isAvailable ? -1 : 1;
-    return (leftLatest?.price ?? Number.MAX_SAFE_INTEGER) - (rightLatest?.price ?? Number.MAX_SAFE_INTEGER);
+    const priceDiff = (leftLatest?.price ?? Number.MAX_SAFE_INTEGER) - (rightLatest?.price ?? Number.MAX_SAFE_INTEGER);
+    if (priceDiff !== 0) return priceDiff;
+    const leftScore = getPriorityScore(left.title, left.standardProduct?.name, left.category?.name);
+    const rightScore = getPriorityScore(right.title, right.standardProduct?.name, right.category?.name);
+    if (leftScore !== rightScore) return rightScore - leftScore;
+    return (rightLatest?.sampledAt?.getTime() ?? 0) - (leftLatest?.sampledAt?.getTime() ?? 0);
   });
 
   const availableListings = sortedListings.filter((listing) => {
@@ -68,6 +71,7 @@ export default defineEventHandler(async (event) => {
     return (listing.snapshots[0]?.price ?? Number.MAX_SAFE_INTEGER) < (best.snapshots[0]?.price ?? Number.MAX_SAFE_INTEGER) ? listing : best;
   }, undefined);
   const lowestSnapshot = lowest?.snapshots[0];
+  const visibleListings = sortedListings.slice(0, LISTING_DISPLAY_LIMIT);
 
   return {
     metrics: {
@@ -81,7 +85,7 @@ export default defineEventHandler(async (event) => {
         ? { title: lowest.title, price: lowestSnapshot?.price ?? null, shopName: lowest.shop.name }
         : null,
     },
-    listings: sortedListings.map((listing) => {
+    listings: visibleListings.map((listing) => {
       const latest = listing.snapshots[0];
       const previous = listing.snapshots[1];
       return {

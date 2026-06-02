@@ -1,5 +1,6 @@
 import db from "../../utils/db";
 import { requireAdmin } from "../../utils/auth";
+import { collectShop, syncShopCatalog } from "../../utils/collector";
 import { inferChannelFromBaseUrl, isShopChannel, parseShopUrl } from "../../utils/shops";
 
 export default defineEventHandler(async (event) => {
@@ -27,7 +28,7 @@ export default defineEventHandler(async (event) => {
 
   const baseUrl = parsed?.baseUrl ?? String(body.baseUrl ?? "https://pay.ldxp.cn").trim();
   const channel = parsed?.channel ?? (isShopChannel(String(body.channel ?? "")) ? String(body.channel) : inferChannelFromBaseUrl(baseUrl));
-  const intervalMinutes = Math.max(1, Math.trunc(Number(body.intervalMinutes || 10)));
+  const intervalMinutes = Math.max(1, Math.trunc(Number(body.intervalMinutes || 1)));
   const name = String(body.name ?? "").trim() || token;
 
   const shop = await db.shop.upsert({
@@ -36,5 +37,19 @@ export default defineEventHandler(async (event) => {
     update: { name, baseUrl, intervalMinutes, active: true },
   });
 
-  return { ok: true, message: "店铺已保存，可以同步商品了。", shopId: shop.id };
+  try {
+    const syncResult = await syncShopCatalog(shop.id);
+    const collectResult = await collectShop(shop.id);
+    return {
+      ok: true,
+      message: `店铺已保存并同步完成，发现 ${syncResult.itemsSeen} 个商品，采集 ${collectResult.snapshotsCreated} 条快照。`,
+      shopId: shop.id,
+      result: { sync: syncResult, collect: collectResult },
+    };
+  } catch (error: any) {
+    if (error?.message?.includes("already running")) {
+      throw createError({ statusCode: 409, message: "店铺已保存，但同步或采集任务已在运行中，请稍后查看。" });
+    }
+    throw createError({ statusCode: 502, message: `店铺已保存，但自动同步或采集失败：${error?.message || "未知错误"}` });
+  }
 });

@@ -281,23 +281,26 @@ export async function collectShop(shopId: string) {
 }
 
 export async function collectDueShops() {
-  const shops = await db.shop.findMany({ where: { active: true }, orderBy: { createdAt: "asc" } });
-  const now = Date.now();
-  const results: Array<{ shopId: string; status: "skipped" | "success" | "failed"; message: string }> = [];
+  const shops = await db.shop.findMany({
+    where: { active: true },
+    include: { runs: { where: { type: "collect" }, orderBy: { startedAt: "desc" }, take: 1 } },
+    orderBy: { createdAt: "asc" },
+  });
+  const results: Array<{ shopId: string; status: "success" | "failed"; message: string }> = [];
+  const [shop] = shops.sort((a, b) => {
+    const lastA = a.runs[0]?.startedAt.getTime() ?? 0;
+    const lastB = b.runs[0]?.startedAt.getTime() ?? 0;
+    if (lastA !== lastB) return lastA - lastB;
+    return a.createdAt.getTime() - b.createdAt.getTime();
+  });
 
-  for (const shop of shops) {
-    const dueAt = shop.lastCollectedAt ? shop.lastCollectedAt.getTime() + shop.intervalMinutes * 60 * 1000 : 0;
-    if (dueAt > now) {
-      results.push({ shopId: shop.id, status: "skipped", message: "未到采集时间" });
-      continue;
-    }
+  if (!shop) return results;
 
-    try {
-      const result = await collectShop(shop.id);
-      results.push({ shopId: shop.id, status: "success", message: `写入 ${result.snapshotsCreated} 条快照` });
-    } catch (error) {
-      results.push({ shopId: shop.id, status: "failed", message: getErrorMessage(error) });
-    }
+  try {
+    const result = await collectShop(shop.id);
+    results.push({ shopId: shop.id, status: "success", message: `写入 ${result.snapshotsCreated} 条快照` });
+  } catch (error) {
+    results.push({ shopId: shop.id, status: "failed", message: getErrorMessage(error) });
   }
 
   return results;

@@ -15,7 +15,7 @@ export default defineEventHandler(async (event) => {
       name: String(body.name ?? "").trim() || "未命名店铺",
       baseUrl,
       channel: inferChannelFromBaseUrl(baseUrl),
-      intervalMinutes: Math.max(1, Math.trunc(Number(body.intervalMinutes || 10))),
+      ...(body.intervalMinutes === undefined ? {} : { intervalMinutes: Math.max(1, Math.trunc(Number(body.intervalMinutes || 1))) }),
       active: Boolean(body.active),
     },
   });

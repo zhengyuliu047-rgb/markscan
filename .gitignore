@@ -6,9 +6,11 @@ out/
 dist/
 coverage/
 *.log
+.DS_Store
 *.tsbuildinfo
 .env
 .env*.local
 data/
 prisma/dev.db
 prisma/dev.db-journal
+assets/HarmonyOS Sans/**/*.ttf

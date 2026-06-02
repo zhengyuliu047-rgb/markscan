@@ -3,19 +3,19 @@
     <header class="public-topbar">
       <NuxtLink to="/market" class="public-logo">
         <span>MARKSCAN</span>
-        <strong>AI 行情</strong>
+        <strong>价格看板</strong>
       </NuxtLink>
       <nav class="public-nav">
-        <NuxtLink to="/market">行情</NuxtLink>
+        <NuxtLink to="/market">价格看板</NuxtLink>
         <NuxtLink to="/admin">后台</NuxtLink>
       </nav>
     </header>
 
     <section class="market-hero">
       <div>
-        <div class="eyebrow">Public price board</div>
-        <h1>AI 商品价格监控前台</h1>
-        <p>只展示已有采集快照的商品；同步目录价不会作为行情价展示。</p>
+        <div class="eyebrow">实时价格看板</div>
+        <h1>商品价格监控</h1>
+        <p>价格来自后台采集快照，仅展示已完成采样的商品。</p>
       </div>
       <form class="market-search" @submit.prevent="search">
         <input v-model="keyword" class="input" placeholder="输入搜索关键词..." @input="onSearchInput" />
@@ -49,14 +49,14 @@
     <section class="card market-card">
       <div class="card-header">
         <div>
-          <div class="card-title">商品行情</div>
-          <div class="muted">数据来自最新采集快照。</div>
+          <div class="card-title">商品价格</div>
+          <div class="muted">按最新采集快照展示价格、库存和变化；有货低价优先。</div>
         </div>
         <var-button v-if="route.query.q" @click="clearSearch">清空搜索</var-button>
       </div>
 
       <div v-if="!data?.listings.length" class="card-pad">
-        <div class="empty">暂无公开行情。请先在后台启用商品并执行一次采集。</div>
+        <div class="empty">暂无价格数据。请先在后台启用商品并完成一次采集。</div>
       </div>
       <div v-else class="table-wrap">
         <table class="table">
@@ -112,7 +112,7 @@
     <section class="card market-card">
       <div class="card-header">
         <div class="card-title">最近采样</div>
-        <div class="muted">用于检查采集是否持续运行。</div>
+        <div class="muted">用于确认自动采集是否持续更新。</div>
       </div>
       <div class="snapshot-strip">
         <div v-if="!data?.recentSnapshots.length" class="empty">暂无采样记录。</div>
@@ -132,6 +132,17 @@ const route = useRoute();
 const router = useRouter();
 const keyword = ref(String(route.query.q ?? ""));
 const { data, refresh } = await useFetch<any>("/api/market", { query: computed(() => ({ q: route.query.q || "" })) });
+let refreshTimer: ReturnType<typeof setInterval> | null = null;
+
+onMounted(() => {
+  refreshTimer = setInterval(() => {
+    void refresh();
+  }, 30_000);
+});
+
+onBeforeUnmount(() => {
+  if (refreshTimer) clearInterval(refreshTimer);
+});
 
 let debounceTimer: any = null;
 function onSearchInput() {

@@ -2,6 +2,10 @@
   "name": "markscan",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=20.19.0 <25",
+    "npm": ">=10"
+  },
   "scripts": {
     "dev": "nuxt dev",
     "build": "nuxt build",
@@ -14,21 +18,21 @@
     "collector:dev": "tsx -r dotenv/config scripts/collector.ts",
     "collector:once": "tsx -r dotenv/config scripts/collector-once.ts",
     "collector": "tsx -r dotenv/config scripts/collector.ts",
-    "start:collector": "prisma migrate deploy && tsx scripts/collector.ts"
+    "start:collector": "prisma migrate deploy && tsx -r dotenv/config scripts/collector.ts"
   },
   "dependencies": {
-    "@prisma/client": "6",
-    "@varlet/ui": "latest",
-    "dotenv": "latest",
-    "nuxt": "latest",
-    "node-cron": "latest",
-    "vue": "latest"
+    "@prisma/client": "6.19.3",
+    "@varlet/ui": "3.14.2",
+    "dotenv": "16.6.1",
+    "node-cron": "4.2.1",
+    "nuxt": "4.4.6",
+    "vue": "3.5.35"
   },
   "devDependencies": {
-    "@types/node": "latest",
-    "prisma": "6",
-    "tsx": "latest",
-    "typescript": "latest",
-    "vue-tsc": "latest"
+    "@types/node": "24.10.1",
+    "prisma": "6.19.3",
+    "tsx": "4.22.4",
+    "typescript": "5.9.3",
+    "vue-tsc": "3.3.3"
   }
 }

@@ -22,7 +22,7 @@ async function tick() {
   }
 }
 
-console.log("[collector] started. Checking due shops every minute.");
+console.log("[collector] started. Collecting one active shop per minute.");
 void tick();
 
 cron.schedule("* * * * *", () => {

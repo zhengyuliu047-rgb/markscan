@@ -5,7 +5,7 @@ export default defineEventHandler(async (event) => {
   const username = String(body.username ?? "").trim();
   const password = String(body.password ?? "");
 
-  if (!verifyAdminCredentials(username, password)) {
+  if (!await verifyAdminCredentials(username, password)) {
     throw createError({ statusCode: 401, message: "账号或密码不正确" });
   }
 
