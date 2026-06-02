@@ -55,7 +55,31 @@ const sessionCookieCache = new Map<
   string,
   { cookies: string; timestamp: number }
 >();
+const browserSessionCache = new Map<string, Promise<BrowserSession>>();
 const SESSION_CACHE_TTL_MS = 25 * 60 * 1000; // 25 分钟
+const BROWSER_SESSION_TTL_MS = 25 * 60 * 1000;
+
+type BrowserSession = {
+  browser: any;
+  context: any;
+  page: any;
+  timestamp: number;
+};
+
+function useBrowserCollector() {
+  const value = process.env.MARKSCAN_USE_BROWSER_COLLECTOR;
+  return value === "1" || value?.toLowerCase() === "true";
+}
+
+function getBrowserWaitMs() {
+  const value = Number(process.env.MARKSCAN_BROWSER_WAIT_MS || 8000);
+  return Number.isFinite(value) && value >= 0 ? value : 8000;
+}
+
+function isHtmlResponse(text: string) {
+  const value = text.trimStart().toLowerCase();
+  return value.startsWith("<html") || value.includes("<script");
+}
 
 function previewResponseBody(text: string) {
   return text.replace(/\s+/g, " ").trim().slice(0, 160);
@@ -214,6 +238,111 @@ async function getSessionCookies(baseUrl: string, token: string) {
   return await acquireSessionCookies(baseUrl, token);
 }
 
+async function closeBrowserSession(session: BrowserSession) {
+  try {
+    await session.context?.close?.();
+  } catch {
+    // ignore close errors
+  }
+  try {
+    await session.browser?.close?.();
+  } catch {
+    // ignore close errors
+  }
+}
+
+async function createBrowserSession(root: string, token: string): Promise<BrowserSession> {
+  const { chromium } = await import("playwright");
+  const browser = await chromium.launch({
+    headless: true,
+    args: ["--disable-blink-features=AutomationControlled"],
+  });
+  const context = await browser.newContext({
+    locale: "zh-CN",
+    userAgent: BROWSER_USER_AGENT,
+  });
+  const page = await context.newPage();
+
+  await page.goto(`${root}/shop/${token}`, {
+    waitUntil: "domcontentloaded",
+    timeout: REQUEST_TIMEOUT_MS * 4,
+  });
+  await page.waitForTimeout(getBrowserWaitMs());
+
+  return { browser, context, page, timestamp: Date.now() };
+}
+
+async function getBrowserSession(root: string, token: string) {
+  const key = `${root}|${token}`;
+  const cachedPromise = browserSessionCache.get(key);
+
+  if (cachedPromise) {
+    const cached = await cachedPromise;
+    const isExpired = Date.now() - cached.timestamp >= BROWSER_SESSION_TTL_MS;
+    const isClosed = Boolean(cached.page?.isClosed?.());
+    if (!isExpired && !isClosed) return cached;
+    browserSessionCache.delete(key);
+    await closeBrowserSession(cached);
+  }
+
+  const sessionPromise = createBrowserSession(root, token).catch((error) => {
+    browserSessionCache.delete(key);
+    throw error;
+  });
+  browserSessionCache.set(key, sessionPromise);
+  return await sessionPromise;
+}
+
+async function browserPostForm<T>(
+  baseUrl: string,
+  path: string,
+  token: string,
+  data: Record<string, string | number | null | undefined>,
+) {
+  const root = normalizeBaseUrl(baseUrl);
+  const session = await getBrowserSession(root, token);
+  const result = await session.page.evaluate(
+    async (input: { path: string; data: Record<string, string | number | null | undefined> }) => {
+      const body = new URLSearchParams();
+      for (const [key, value] of Object.entries(input.data)) {
+        body.set(key, value === null || value === undefined ? "" : String(value));
+      }
+
+      const response = await fetch(input.path, {
+        method: "POST",
+        headers: {
+          Accept: "application/json, text/plain, */*",
+          "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+          "X-Requested-With": "XMLHttpRequest",
+        },
+        body,
+        cache: "no-store",
+      });
+
+      return {
+        ok: response.ok,
+        status: response.status,
+        contentType: response.headers.get("content-type"),
+        text: await response.text(),
+      };
+    },
+    { path, data },
+  );
+
+  if (!result.ok) throw new Error(`HTTP ${result.status} for ${root}${path}: ${previewResponseBody(result.text)}`);
+
+  let payload: LdxpApiResponse<T>;
+  try {
+    payload = JSON.parse(result.text) as LdxpApiResponse<T>;
+  } catch {
+    throw new Error(`浏览器采集仍未返回 JSON：${root}${path}，响应：${previewResponseBody(result.text)}`);
+  }
+
+  if (Number(payload.code) !== 1) throw new Error(payload.msg || `request failed for ${path}`);
+  console.log(`[ldxp] browser collector fetched ${root}${path}`);
+  return payload.data;
+}
+
 export function normalizeBaseUrl(baseUrl: string) {
   return baseUrl.replace(/\/+$/, "");
 }
@@ -289,7 +418,11 @@ async function postForm<T>(
         payload = JSON.parse(responseText) as LdxpApiResponse<T>;
       } catch {
         // 如果收到 HTML（WAF 拦截），清除 Cookie 缓存，下次重试会重新获取
-        if (responseText.includes("<html") || responseText.includes("<script")) {
+        if (isHtmlResponse(responseText)) {
+          if (useBrowserCollector()) {
+            console.log(`[ldxp] fallback to browser collector for ${root}${path}`);
+            return await browserPostForm<T>(baseUrl, path, token, data);
+          }
           sessionCookieCache.delete(root);
           if (attempt < MAX_ATTEMPTS) {
             await new Promise((resolve) => setTimeout(resolve, 800));
