@@ -48,6 +48,10 @@ const DEFAULT_GOODS_TYPES = ["card", "article", "resource", "equity"];
 const REQUEST_TIMEOUT_MS = 15_000;
 const MAX_ATTEMPTS = 2;
 
+function previewResponseBody(text: string) {
+  return text.replace(/\s+/g, " ").trim().slice(0, 160);
+}
+
 export function normalizeBaseUrl(baseUrl: string) {
   return baseUrl.replace(/\/+$/, "");
 }
@@ -101,9 +105,15 @@ async function postForm<T>(
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
 
-      if (!response.ok) throw new Error(`HTTP ${response.status} for ${path}`);
+      const responseText = await response.text();
+      if (!response.ok) throw new Error(`HTTP ${response.status} for ${root}${path}: ${previewResponseBody(responseText)}`);
 
-      const payload = (await response.json()) as LdxpApiResponse<T>;
+      let payload: LdxpApiResponse<T>;
+      try {
+        payload = JSON.parse(responseText) as LdxpApiResponse<T>;
+      } catch {
+        throw new Error(`店铺接口没有返回 JSON，请检查店铺 URL 或目标站是否有安全验证：${root}${path}，响应：${previewResponseBody(responseText)}`);
+      }
       if (Number(payload.code) !== 1) throw new Error(payload.msg || `request failed for ${path}`);
       return payload.data;
     } catch (error) {
