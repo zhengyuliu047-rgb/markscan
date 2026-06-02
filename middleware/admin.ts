@@ -1,13 +1,11 @@
 export default defineNuxtRouteMiddleware(async () => {
-  const { data, error } = await useFetch<{ authenticated: boolean; initialized: boolean }>("/api/auth/session", {
-    credentials: "include",
-  });
+  const session = await $fetch<{ authenticated: boolean; initialized: boolean }>("/api/auth/session", { credentials: "include" }).catch(() => null);
 
-  if (!error.value && data.value && !data.value.initialized) {
+  if (session && !session.initialized) {
     return navigateTo("/setup");
   }
 
-  if (error.value || !data.value?.authenticated) {
+  if (!session?.authenticated) {
     return navigateTo("/login");
   }
 });

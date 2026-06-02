@@ -45,7 +45,8 @@ async function login() {
   try {
     await $fetch("/api/auth/login", { method: "POST", body: form });
     showNotice("登录成功", "success");
-    await navigateTo("/admin");
+    await clearNuxtData();
+    await navigateTo("/admin", { replace: true });
   } catch (error: any) {
     showNotice(error?.data?.message || error?.statusMessage || "登录失败");
   } finally {

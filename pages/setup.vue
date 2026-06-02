@@ -65,7 +65,8 @@ async function setup() {
   try {
     const result: any = await $fetch("/api/setup", { method: "POST", body: form });
     showNotice(result?.message || "初始化完成", "success");
-    await navigateTo("/admin");
+    await clearNuxtData();
+    await navigateTo("/admin", { replace: true });
   } catch (error: any) {
     showNotice(error?.data?.message || error?.statusMessage || "初始化失败");
   } finally {
