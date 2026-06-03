@@ -1,8 +1,9 @@
-import cron from "node-cron";
 import db from "../server/utils/db";
 import { collectDueShops } from "../server/utils/collector";
 
+const COLLECTOR_DELAY_MS = 60_000;
 let running = false;
+let stopped = false;
 
 async function tick() {
   if (running) {
@@ -22,21 +23,26 @@ async function tick() {
   }
 }
 
-console.log("[collector] started. Collecting one active shop every 5 minutes.");
-void tick();
+async function loop() {
+  while (!stopped) {
+    await tick();
+    if (!stopped) await new Promise((resolve) => setTimeout(resolve, COLLECTOR_DELAY_MS));
+  }
+}
 
-cron.schedule("*/5 * * * *", () => {
-  void tick();
-});
+console.log("[collector] started. Collecting one active shop, then waiting 1 minute after completion.");
+void loop();
 
 process.on("SIGINT", async () => {
   console.log("[collector] stopping");
+  stopped = true;
   await db.$disconnect();
   process.exit(0);
 });
 
 process.on("SIGTERM", async () => {
   console.log("[collector] stopping");
+  stopped = true;
   await db.$disconnect();
   process.exit(0);
 });

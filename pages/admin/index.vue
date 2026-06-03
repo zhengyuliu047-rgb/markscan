@@ -3,7 +3,7 @@
     <div>
       <div class="eyebrow">采集控制台</div>
       <h1>店铺与价格采集管理</h1>
-      <p>添加店铺、同步商品、启用采集后，系统每 5 分钟轮询采集一个店铺。</p>
+      <p>添加店铺、同步商品、启用采集后，系统每次采集一个店铺，完成后等待 1 分钟再采下一个。</p>
     </div>
   </section>
 
@@ -35,7 +35,7 @@
   </section>
 
   <section class="card" style="margin-bottom: 16px">
-    <div class="card-header"><div class="card-title">店铺列表</div><div class="muted">管理店铺商品和采集状态；定时任务每 5 分钟轮询一个启用店铺</div></div>
+    <div class="card-header"><div class="card-title">店铺列表</div><div class="muted">管理店铺商品和采集状态；自动任务完成一个店铺后等待 1 分钟再采下一个</div></div>
     <div v-if="!data?.shops.length" class="card-pad"><div class="empty">还没有店铺。</div></div>
     <div v-else class="table-wrap">
       <table class="table">

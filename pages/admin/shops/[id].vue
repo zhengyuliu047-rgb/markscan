@@ -16,7 +16,7 @@
   <section class="grid cols-3" style="margin-bottom: 16px">
     <div class="metric"><div class="label">Catalog</div><div class="metric-value">{{ shop?.listings.length || 0 }}</div><div class="muted">已同步 SKU</div></div>
     <div class="metric"><div class="label">Tracked</div><div class="metric-value">{{ enabledCount }}</div><div class="muted">已启用采集</div></div>
-    <div class="metric"><div class="label">Queue</div><div class="metric-value">5min</div><div class="muted">全局轮询间隔</div></div>
+    <div class="metric"><div class="label">Queue</div><div class="metric-value">+1min</div><div class="muted">采完后等待</div></div>
   </section>
 
   <section class="grid cols-2" style="margin-bottom: 16px">

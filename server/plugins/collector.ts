@@ -1,10 +1,11 @@
 import { collectDueShops } from "../utils/collector";
 
-const COLLECTOR_INTERVAL_MS = 5 * 60_000;
+const COLLECTOR_DELAY_MS = 60_000;
 
 type CollectorState = {
   running: boolean;
-  timer: ReturnType<typeof setInterval>;
+  stopped: boolean;
+  timer: ReturnType<typeof setTimeout> | null;
 };
 
 const globalForCollector = globalThis as typeof globalThis & { __markscanCollector?: CollectorState };
@@ -19,14 +20,19 @@ export default defineNitroPlugin((nitroApp) => {
 
   const state: CollectorState = {
     running: false,
-    timer: setInterval(() => {
-      void tick();
-    }, COLLECTOR_INTERVAL_MS),
+    stopped: false,
+    timer: null,
   };
 
   globalForCollector.__markscanCollector = state;
 
-  if (typeof state.timer === "object" && typeof state.timer.unref === "function") state.timer.unref();
+  function scheduleNext(delayMs = COLLECTOR_DELAY_MS) {
+    if (state.stopped) return;
+    state.timer = setTimeout(() => {
+      void tick();
+    }, delayMs);
+    if (typeof state.timer === "object" && typeof state.timer.unref === "function") state.timer.unref();
+  }
 
   async function tick() {
     if (state.running) {
@@ -43,14 +49,16 @@ export default defineNitroPlugin((nitroApp) => {
       console.error("[collector] embedded tick failed", error);
     } finally {
       state.running = false;
+      scheduleNext();
     }
   }
 
   nitroApp.hooks.hookOnce("close", () => {
-    clearInterval(state.timer);
+    state.stopped = true;
+    if (state.timer) clearTimeout(state.timer);
     delete globalForCollector.__markscanCollector;
   });
 
-  console.log("[collector] embedded scheduler started. Collecting one active shop every 5 minutes.");
+  console.log("[collector] embedded scheduler started. Collecting one active shop, then waiting 1 minute after completion.");
   void tick();
 });
