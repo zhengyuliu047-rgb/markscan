@@ -179,7 +179,7 @@ const loading = reactive({
   map: {} as Record<string, boolean>
 });
 const apiFetch = $fetch as <T = any>(request: string, options?: any) => Promise<T>;
-const listingQuery = ref("");
+const listingQuery = ref(String(route.query.q ?? ""));
 
 const shop = computed(() => data.value?.shop);
 const enabledCount = computed(() => shop.value?.listings.filter((item: any) => item.enabled).length || 0);

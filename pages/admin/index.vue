@@ -13,6 +13,55 @@
     <div class="metric"><div class="label">Snapshots</div><div class="metric-value">{{ data?.counts.snapshots || 0 }}</div><div class="muted">累计价格快照</div></div>
   </section>
 
+  <section class="card global-search-card" style="margin-bottom: 16px">
+    <div class="card-header">
+      <div>
+        <div class="card-title">全局搜索</div>
+        <div class="muted">搜索店铺、Token、商品名、商品 ID、分类或标准映射；粘贴商品链接也能定位。</div>
+      </div>
+      <div class="global-search-meta">
+        <span v-if="globalQuery" class="pill">{{ searchResultCount }} 个结果</span>
+        <var-button v-if="globalQuery" @click="clearGlobalSearch">清空</var-button>
+      </div>
+    </div>
+    <div class="global-search-panel">
+      <label class="field global-search-input">
+        <span class="label">Search all</span>
+        <input v-model="globalQuery" class="input" inputmode="search" placeholder="例如 GPT Plus / 5x5x0a / 店铺 token / 商品链接" />
+      </label>
+
+      <div v-if="globalSearchLoading" class="empty">正在搜索...</div>
+      <div v-else-if="globalQuery && !searchResultCount" class="empty">没有匹配结果，换个关键词试试。</div>
+      <div v-else-if="globalQuery" class="global-search-results">
+        <div class="global-search-column">
+          <div class="search-section-title">店铺</div>
+          <NuxtLink v-for="shop in globalSearchData?.shops || []" :key="shop.id" class="search-result-card" :to="`/admin/shops/${shop.id}`">
+            <div class="search-result-top">
+              <strong>{{ shop.name }}</strong>
+              <span :class="shop.active ? 'pill ok' : 'pill bad'">{{ shop.active ? 'ACTIVE' : 'PAUSED' }}</span>
+            </div>
+            <div class="muted">{{ shop.baseUrl }}/shop/{{ shop.token }}</div>
+            <div class="search-result-meta"><span>{{ shop.listingsCount }} SKU</span><span>{{ shop.snapshotsCount }} 快照</span><span>采集 {{ formatDate(shop.lastCollectedAt) }}</span></div>
+          </NuxtLink>
+          <div v-if="!(globalSearchData?.shops || []).length" class="search-empty-small">无店铺结果</div>
+        </div>
+
+        <div class="global-search-column is-wide">
+          <div class="search-section-title">商品</div>
+          <NuxtLink v-for="listing in globalSearchData?.listings || []" :key="listing.id" class="search-result-card" :to="`/admin/shops/${listing.shopId}?q=${encodeURIComponent(listing.goodsKey)}`">
+            <div class="search-result-top">
+              <strong>{{ listing.title }}</strong>
+              <span :class="listing.enabled ? 'collect-status is-enabled' : 'collect-status is-disabled'">{{ listing.enabled ? '采集中' : '已停用' }}</span>
+            </div>
+            <div class="search-result-meta"><span>{{ listing.shopName }}</span><span>{{ listing.categoryName }}</span><span>{{ listing.goodsKey }}</span></div>
+            <div class="search-result-meta"><span class="price">{{ money(listing.price) }}</span><span>库存 {{ listing.stock ?? '未知' }}</span><span>快照 {{ formatDate(listing.lastSnapshotAt) }}</span></div>
+          </NuxtLink>
+          <div v-if="!(globalSearchData?.listings || []).length" class="search-empty-small">无商品结果</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <section class="card" style="margin-bottom: 16px">
     <div class="card-header">
       <div>
@@ -91,6 +140,16 @@ const notice = reactive<{ show: boolean; type: NoticeType; message: string }>({ 
 const apiFetch = $fetch as <T = any>(request: string, options?: any) => Promise<T>;
 const parsedShopUrl = computed(() => parseShopUrlInput(form.shopUrl));
 const usingShopUrl = computed(() => parsedShopUrl.value?.kind === "shop");
+const globalQuery = ref("");
+const debouncedGlobalQuery = ref("");
+let globalSearchTimer: ReturnType<typeof setTimeout> | null = null;
+const { data: globalSearchData, pending: globalSearchLoading } = await useAsyncData<any>("admin-global-search", () => {
+  const query = debouncedGlobalQuery.value.trim();
+  if (!query) return Promise.resolve({ shops: [], listings: [] });
+  const adminFetch = import.meta.server ? useRequestFetch() : $fetch;
+  return adminFetch<any>("/api/admin/search", { query: { q: query }, credentials: "include" });
+}, { watch: [debouncedGlobalQuery] });
+const searchResultCount = computed(() => (globalSearchData.value?.shops?.length || 0) + (globalSearchData.value?.listings?.length || 0));
 
 watch(parsedShopUrl, (parsed) => {
   if (parsed) applyParsedShopUrl(parsed);
@@ -101,6 +160,13 @@ watch(() => form.channel, (channel) => {
   if (!form.baseUrl || Object.values(channelDefaultBaseUrls).includes(form.baseUrl)) {
     form.baseUrl = channelDefaultBaseUrls[channel as ShopChannel];
   }
+});
+
+watch(globalQuery, (value) => {
+  if (globalSearchTimer) clearTimeout(globalSearchTimer);
+  globalSearchTimer = setTimeout(() => {
+    debouncedGlobalQuery.value = value.trim();
+  }, 220);
 });
 
 onMounted(() => {
@@ -146,7 +212,9 @@ function normalizeCreateShopForm() {
 
 function showNotice(message: string, type: NoticeType = "success") { notice.message = message; notice.type = type; notice.show = true; }
 function formatDate(value?: string | Date | null) { return value ? new Intl.DateTimeFormat("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date(value)) : "-"; }
+function money(value?: number | null) { return value === null || value === undefined ? "-" : `¥${value}`; }
 function statusClass(status: string) { return status === "success" ? "pill ok" : status === "failed" ? "pill bad" : "pill warn"; }
+function clearGlobalSearch() { globalQuery.value = ""; debouncedGlobalQuery.value = ""; }
 async function callAction<T>(fn: () => Promise<T>) { try { const result: any = await fn(); showNotice(result?.message || "操作完成"); await refresh(); return result; } catch (error: any) { showNotice(error?.data?.message || error?.statusMessage || "操作失败", "error"); await refresh(); } }
 async function createShop() { loading.create = true; try { normalizeCreateShopForm(); const result: any = await callAction(() => apiFetch("/api/admin/shops", { method: "POST", body: form })); if (result?.shopId) await navigateTo(`/admin/shops/${result.shopId}`); } finally { loading.create = false; } }
 async function syncShop(id: string) { loading.sync[id] = true; try { await callAction(() => apiFetch(`/api/admin/shops/${id}/sync`, { method: "POST" })); } finally { loading.sync[id] = false; } }
