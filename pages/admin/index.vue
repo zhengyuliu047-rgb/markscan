@@ -3,7 +3,7 @@
     <div>
       <div class="eyebrow">采集控制台</div>
       <h1>店铺与价格采集管理</h1>
-      <p>添加店铺、同步商品、启用采集后，系统每分钟轮询采集一个店铺。</p>
+      <p>添加店铺、同步商品、启用采集后，系统每 5 分钟轮询采集一个店铺。</p>
     </div>
   </section>
 
@@ -17,24 +17,25 @@
     <div class="card-header">
       <div>
         <div class="card-title">添加店铺</div>
-        <div class="muted">支持 LDXP 和 CatFK，可直接填写完整店铺 URL。</div>
+        <div class="muted">支持 LDXP 和 CatFK，可填写店铺 URL；也可以粘贴商品链接自动解析所属店铺。</div>
       </div>
     </div>
     <div class="card-pad">
       <form class="form-grid" @submit.prevent="createShop">
-        <label class="field"><span class="label">店铺 URL</span><input v-model="form.shopUrl" class="input" placeholder="https://pay.qxvx.cn/item/iwsoql" /></label>
+        <label class="field"><span class="label">店铺 / 商品 URL</span><input v-model="form.shopUrl" class="input" placeholder="https://pay.ldxp.cn/item/5x5x0a" /></label>
         <div class="field"><span class="label">渠道</span><var-select v-model="form.channel" class="channel-select" :class="{ 'locked-field': usingShopUrl }" :options="channelOptions" variant="outlined" :line="false" :hint="false" :readonly="usingShopUrl" text-color="#f0eadc" focus-color="#d5ff5f" blur-color="#33382f" /></div>
         <label class="field"><span class="label">名称</span><input v-model="form.name" class="input" placeholder="可空" /></label>
         <label class="field"><span class="label">Token</span><input v-model="form.token" class="input" :readonly="usingShopUrl" placeholder="7N1H7DQI" /></label>
         <label class="field"><span class="label">Base URL</span><input v-model="form.baseUrl" class="input" :readonly="usingShopUrl" placeholder="https://pay.ldxp.cn" /></label>
         <var-button type="primary" native-type="submit" :loading="loading.create">添加并同步</var-button>
-        <div v-if="usingShopUrl" class="form-note">已从店铺 URL 自动解析渠道、Token 和 Base URL。要手动填写，请先清空店铺 URL。</div>
+        <div v-if="parsedShopUrl?.kind === 'shop'" class="form-note">已从店铺 URL 自动解析渠道、Token 和 Base URL。要手动填写，请先清空 URL。</div>
+        <div v-else-if="parsedShopUrl?.kind === 'item'" class="form-note">已识别商品链接，提交后会自动解析所属店铺，并把该商品加入采集列表。</div>
       </form>
     </div>
   </section>
 
   <section class="card" style="margin-bottom: 16px">
-    <div class="card-header"><div class="card-title">店铺列表</div><div class="muted">管理店铺商品和采集状态；定时任务每分钟轮询一个启用店铺</div></div>
+    <div class="card-header"><div class="card-title">店铺列表</div><div class="muted">管理店铺商品和采集状态；定时任务每 5 分钟轮询一个启用店铺</div></div>
     <div v-if="!data?.shops.length" class="card-pad"><div class="empty">还没有店铺。</div></div>
     <div v-else class="table-wrap">
       <table class="table">
@@ -82,11 +83,11 @@ const channelOptions = [{ label: "LDXP", value: "ldxp" }, { label: "CatFK", valu
 const channelDefaultBaseUrls: Record<ShopChannel, string> = { ldxp: "https://pay.ldxp.cn", catfk: "https://catfk.com" };
 type NoticeType = "success" | "error";
 type ShopChannel = "ldxp" | "catfk";
-type ParsedShopUrl = { channel: ShopChannel; token: string; baseUrl: string };
+type ParsedShopUrl = { kind: "shop"; channel: ShopChannel; token: string; baseUrl: string } | { kind: "item"; channel: ShopChannel; goodsKey: string; baseUrl: string };
 const notice = reactive<{ show: boolean; type: NoticeType; message: string }>({ show: false, type: "success", message: "" });
 const apiFetch = $fetch as <T = any>(request: string, options?: any) => Promise<T>;
 const parsedShopUrl = computed(() => parseShopUrlInput(form.shopUrl));
-const usingShopUrl = computed(() => Boolean(parsedShopUrl.value));
+const usingShopUrl = computed(() => parsedShopUrl.value?.kind === "shop");
 
 watch(parsedShopUrl, (parsed) => {
   if (parsed) applyParsedShopUrl(parsed);
@@ -118,9 +119,12 @@ function parseShopUrlInput(value: string): ParsedShopUrl | null {
   if (!raw) return null;
   try {
     const url = new URL(raw);
-    const match = url.pathname.match(/\/(?:shop|item)\/([^/?#]+)/i);
-    if (!match?.[1]) return null;
-    return { channel: inferChannelFromHost(url.hostname), token: match[1], baseUrl: `${url.protocol}//${url.host}` };
+    const match = url.pathname.match(/\/(shop|item)\/([^/?#]+)/i);
+    if (!match?.[1] || !match[2]) return null;
+    const channel = inferChannelFromHost(url.hostname);
+    const baseUrl = `${url.protocol}//${url.host}`;
+    if (match[1].toLowerCase() === "item") return { kind: "item", channel, goodsKey: match[2], baseUrl };
+    return { kind: "shop", channel, token: match[2], baseUrl };
   } catch {
     return null;
   }
@@ -128,8 +132,8 @@ function parseShopUrlInput(value: string): ParsedShopUrl | null {
 
 function applyParsedShopUrl(parsed: ParsedShopUrl) {
   form.channel = parsed.channel;
-  form.token = parsed.token;
   form.baseUrl = parsed.baseUrl;
+  form.token = parsed.kind === "shop" ? parsed.token : "";
 }
 
 function normalizeCreateShopForm() {

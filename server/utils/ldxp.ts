@@ -39,6 +39,17 @@ export type LdxpGoods = {
   };
 };
 
+export type LdxpGoodsInfo = LdxpGoods & {
+  real_price?: number | string | null;
+  status?: number;
+  user?: {
+    nickname?: string;
+    token?: string;
+    link?: string;
+    description?: string;
+  };
+};
+
 export type LdxpGoodsPage = {
   total: number;
   list: LdxpGoods[];
@@ -64,6 +75,12 @@ type BrowserSession = {
   context: any;
   page: any;
   timestamp: number;
+};
+
+type PostFormOptions = {
+  refererPath?: string;
+  sessionPath?: string;
+  visitorId?: string;
 };
 
 function useBrowserCollector() {
@@ -132,13 +149,21 @@ function solveAcwScV2(htmlBody: string): string | null {
  * 访问店铺主页，获取 WAF/CDN 会话 Cookie。
  * 如果响应是 JS 挑战页，则求解 acw_sc__v2 并重新请求获取真实会话 Cookie。
  */
-async function acquireSessionCookies(baseUrl: string, token: string) {
+function shopPath(token: string) {
+  return `/shop/${encodeURIComponent(token)}`;
+}
+
+function itemPath(goodsKey: string) {
+  return `/item/${encodeURIComponent(goodsKey)}`;
+}
+
+async function acquireSessionCookies(baseUrl: string, sessionPath: string) {
   const root = normalizeBaseUrl(baseUrl);
-  const shopPageUrl = `${root}/shop/${token}`;
+  const sessionUrl = `${root}${sessionPath}`;
 
   try {
     // 第一次请求：可能触发 JS 挑战
-    const firstResponse = await fetch(shopPageUrl, {
+    const firstResponse = await fetch(sessionUrl, {
       method: "GET",
       headers: {
         Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
@@ -174,7 +199,7 @@ async function acquireSessionCookies(baseUrl: string, token: string) {
       const allFirstCookies = [...firstCookies, challengeCookie].join("; ");
 
       // 第二次请求：带上求解后的 Cookie
-      const secondResponse = await fetch(shopPageUrl, {
+      const secondResponse = await fetch(sessionUrl, {
         method: "GET",
         headers: {
           Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
@@ -219,7 +244,7 @@ async function acquireSessionCookies(baseUrl: string, token: string) {
     sessionCookieCache.set(root, { cookies: cookieString, timestamp: Date.now() });
     return cookieString;
   } catch (error) {
-    console.warn(`[ldxp] 获取会话 Cookie 失败（${shopPageUrl}）:`, error);
+    console.warn(`[ldxp] 获取会话 Cookie 失败（${sessionUrl}）:`, error);
     return "";
   }
 }
@@ -227,7 +252,7 @@ async function acquireSessionCookies(baseUrl: string, token: string) {
 /**
  * 获取缓存的会话 Cookie，如果过期或不存在则重新获取
  */
-async function getSessionCookies(baseUrl: string, token: string) {
+async function getSessionCookies(baseUrl: string, sessionPath: string) {
   const root = normalizeBaseUrl(baseUrl);
   const cached = sessionCookieCache.get(root);
 
@@ -235,7 +260,7 @@ async function getSessionCookies(baseUrl: string, token: string) {
     return cached.cookies;
   }
 
-  return await acquireSessionCookies(baseUrl, token);
+  return await acquireSessionCookies(baseUrl, sessionPath);
 }
 
 async function closeBrowserSession(session: BrowserSession) {
@@ -251,7 +276,7 @@ async function closeBrowserSession(session: BrowserSession) {
   }
 }
 
-async function createBrowserSession(root: string, token: string): Promise<BrowserSession> {
+async function createBrowserSession(root: string, sessionPath: string): Promise<BrowserSession> {
   const { chromium } = await import("playwright");
   const browser = await chromium.launch({
     headless: true,
@@ -263,7 +288,7 @@ async function createBrowserSession(root: string, token: string): Promise<Browse
   });
   const page = await context.newPage();
 
-  await page.goto(`${root}/shop/${token}`, {
+  await page.goto(`${root}${sessionPath}`, {
     waitUntil: "domcontentloaded",
     timeout: REQUEST_TIMEOUT_MS * 4,
   });
@@ -272,8 +297,8 @@ async function createBrowserSession(root: string, token: string): Promise<Browse
   return { browser, context, page, timestamp: Date.now() };
 }
 
-async function getBrowserSession(root: string, token: string) {
-  const key = `${root}|${token}`;
+async function getBrowserSession(root: string, sessionPath: string) {
+  const key = `${root}|${sessionPath}`;
   const cachedPromise = browserSessionCache.get(key);
 
   if (cachedPromise) {
@@ -285,7 +310,7 @@ async function getBrowserSession(root: string, token: string) {
     await closeBrowserSession(cached);
   }
 
-  const sessionPromise = createBrowserSession(root, token).catch((error) => {
+  const sessionPromise = createBrowserSession(root, sessionPath).catch((error) => {
     browserSessionCache.delete(key);
     throw error;
   });
@@ -298,9 +323,10 @@ async function browserPostForm<T>(
   path: string,
   token: string,
   data: Record<string, string | number | null | undefined>,
+  options: PostFormOptions = {},
 ) {
   const root = normalizeBaseUrl(baseUrl);
-  const session = await getBrowserSession(root, token);
+  const session = await getBrowserSession(root, options.sessionPath ?? shopPath(token));
   const result = await session.page.evaluate(
     async (input: { path: string; data: Record<string, string | number | null | undefined> }) => {
       const body = new URLSearchParams();
@@ -368,9 +394,12 @@ async function postForm<T>(
   path: string,
   token: string,
   data: Record<string, string | number | null | undefined>,
+  options: PostFormOptions = {},
 ) {
   const root = normalizeBaseUrl(baseUrl);
   const body = new URLSearchParams();
+  const sessionPath = options.sessionPath ?? shopPath(token);
+  const refererPath = options.refererPath ?? sessionPath;
 
   for (const [key, value] of Object.entries(data)) {
     body.set(key, value === null || value === undefined ? "" : String(value));
@@ -381,19 +410,19 @@ async function postForm<T>(
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
     try {
       // 首次请求或缓存过期时，先获取会话 Cookie
-      const sessionCookies = await getSessionCookies(baseUrl, token);
+      const sessionCookies = await getSessionCookies(baseUrl, sessionPath);
 
       const headers: Record<string, string> = {
         Accept: "application/json, text/plain, */*",
         "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
         "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
         Origin: root,
-        Referer: `${root}/shop/${token}`,
+        Referer: `${root}${refererPath}`,
         "Sec-Fetch-Dest": "empty",
         "Sec-Fetch-Mode": "cors",
         "Sec-Fetch-Site": "same-origin",
         "User-Agent": BROWSER_USER_AGENT,
-        Visitorid: `markscan-${token}`,
+        Visitorid: `markscan-${options.visitorId ?? token}`,
         "X-Requested-With": "XMLHttpRequest",
       };
 
@@ -421,7 +450,7 @@ async function postForm<T>(
         if (isHtmlResponse(responseText)) {
           if (useBrowserCollector()) {
             console.log(`[ldxp] fallback to browser collector for ${root}${path}`);
-            return await browserPostForm<T>(baseUrl, path, token, data);
+            return await browserPostForm<T>(baseUrl, path, token, data, options);
           }
           sessionCookieCache.delete(root);
           if (attempt < MAX_ATTEMPTS) {
@@ -448,6 +477,14 @@ async function postForm<T>(
 
 export function fetchShopInfo(baseUrl: string, token: string) {
   return postForm<LdxpShopInfo>(baseUrl, "/shopApi/Shop/info", token, { token, category_key: "" });
+}
+
+export function fetchGoodsInfo(baseUrl: string, goodsKey: string) {
+  return postForm<LdxpGoodsInfo>(baseUrl, "/shopApi/Shop/goodsInfo", goodsKey, { goods_key: goodsKey, trade_no: "" }, {
+    refererPath: itemPath(goodsKey),
+    sessionPath: itemPath(goodsKey),
+    visitorId: `item-${goodsKey}`,
+  });
 }
 
 export function fetchCategories(baseUrl: string, token: string, goodsType: string) {

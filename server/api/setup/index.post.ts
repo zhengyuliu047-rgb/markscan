@@ -1,7 +1,8 @@
 import db from "../../utils/db";
 import { hashPassword, isSetupComplete, setAdminSession } from "../../utils/auth";
-import { collectShop, syncShopCatalog } from "../../utils/collector";
-import { parseShopUrl } from "../../utils/shops";
+import { collectShop, syncShopCatalog, syncSingleGoods } from "../../utils/collector";
+import { fetchGoodsInfo } from "../../utils/ldxp";
+import { parseShopOrGoodsUrl } from "../../utils/shops";
 
 export default defineEventHandler(async (event) => {
   if (await isSetupComplete()) throw createError({ statusCode: 409, message: "系统已完成初始化" });
@@ -23,15 +24,29 @@ export default defineEventHandler(async (event) => {
 
   if (shopUrl) {
     try {
-      const parsed = parseShopUrl(shopUrl);
-      const shop = await db.shop.upsert({
-        where: { channel_token: { channel: parsed.channel, token: parsed.token } },
-        create: { channel: parsed.channel, token: parsed.token, name: parsed.token, baseUrl: parsed.baseUrl, intervalMinutes: 1, active },
-        update: { baseUrl: parsed.baseUrl, active },
-      });
-      shopId = shop.id;
-      await syncShopCatalog(shop.id);
-      if (active) await collectShop(shop.id);
+      const parsed = parseShopOrGoodsUrl(shopUrl);
+      if (parsed.kind === "item") {
+        const goods = await fetchGoodsInfo(parsed.baseUrl, parsed.goodsKey);
+        const token = goods.user?.token?.trim();
+        if (!token) throw new Error("商品存在，但未能解析到所属店铺");
+        const shop = await db.shop.upsert({
+          where: { channel_token: { channel: parsed.channel, token } },
+          create: { channel: parsed.channel, token, name: goods.user?.nickname || token, baseUrl: parsed.baseUrl, intervalMinutes: 5, active },
+          update: { name: goods.user?.nickname || token, baseUrl: parsed.baseUrl, active },
+        });
+        shopId = shop.id;
+        await syncSingleGoods({ shopId: shop.id, baseUrl: parsed.baseUrl, goodsKey: parsed.goodsKey, enabled: active, goods });
+        if (active) await collectShop(shop.id);
+      } else {
+        const shop = await db.shop.upsert({
+          where: { channel_token: { channel: parsed.channel, token: parsed.token } },
+          create: { channel: parsed.channel, token: parsed.token, name: parsed.token, baseUrl: parsed.baseUrl, intervalMinutes: 5, active },
+          update: { baseUrl: parsed.baseUrl, active },
+        });
+        shopId = shop.id;
+        await syncShopCatalog(shop.id);
+        if (active) await collectShop(shop.id);
+      }
     } catch (error: any) {
       warnings.push(`店铺已跳过：${error?.message || "同步失败"}`);
     }

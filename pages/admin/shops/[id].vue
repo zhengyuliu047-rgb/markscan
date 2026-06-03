@@ -16,7 +16,7 @@
   <section class="grid cols-3" style="margin-bottom: 16px">
     <div class="metric"><div class="label">Catalog</div><div class="metric-value">{{ shop?.listings.length || 0 }}</div><div class="muted">已同步 SKU</div></div>
     <div class="metric"><div class="label">Tracked</div><div class="metric-value">{{ enabledCount }}</div><div class="muted">已启用采集</div></div>
-    <div class="metric"><div class="label">Queue</div><div class="metric-value">1/min</div><div class="muted">全局轮询速率</div></div>
+    <div class="metric"><div class="label">Queue</div><div class="metric-value">5min</div><div class="muted">全局轮询间隔</div></div>
   </section>
 
   <section class="grid cols-2" style="margin-bottom: 16px">
@@ -56,8 +56,8 @@
     </div>
     <div v-if="shop?.listings.length" class="listing-toolbar">
       <label class="field listing-search">
-        <span class="label">搜索商品</span>
-        <input v-model="listingQuery" class="input" inputmode="search" placeholder="商品名 / 商品 ID / 分类 / 映射名" />
+        <span class="label">商品采集搜索</span>
+        <input v-model="listingQuery" class="input" inputmode="search" placeholder="商品名 / 商品 ID / 分类 / 粘贴商品链接" />
       </label>
       <div class="listing-toolbar-meta">
         <span class="pill">显示 {{ filteredListings.length }} / {{ shop.listings.length }}</span>
@@ -182,16 +182,20 @@ const shop = computed(() => data.value?.shop);
 const enabledCount = computed(() => shop.value?.listings.filter((item: any) => item.enabled).length || 0);
 const filteredListings = computed(() => {
   const listings = shop.value?.listings || [];
-  const query = normalizeSearch(listingQuery.value);
-  if (!query) return listings;
-  return listings.filter((listing: any) => [
-    listing.title,
-    listing.goodsKey,
-    listing.goodsType,
-    listing.category?.name,
-    listing.standardProduct?.name,
-    listing.standardProductName
-  ].some((value) => normalizeSearch(value).includes(query)));
+  const terms = getSearchTerms(listingQuery.value);
+  if (!terms.length) return listings;
+  return listings.filter((listing: any) => {
+    const haystack = normalizeSearch([
+      listing.title,
+      listing.goodsKey,
+      listing.goodsType,
+      listing.link,
+      listing.category?.name,
+      listing.standardProduct?.name,
+      listing.standardProductName
+    ].join(" "));
+    return terms.some((term) => haystack.includes(term));
+  });
 });
 
 onMounted(() => {
@@ -216,6 +220,20 @@ watchEffect(() => {
 
 function showNotice(message: string, type: NoticeType = "success") { notice.message = message; notice.type = type; notice.show = true; }
 function normalizeSearch(value: unknown) { return String(value ?? "").trim().toLowerCase(); }
+function getSearchTerms(value: string) {
+  const raw = normalizeSearch(value);
+  if (!raw) return [];
+  const terms = new Set([raw]);
+  try {
+    const url = new URL(raw);
+    const match = url.pathname.match(/\/(?:item|shop)\/([^/?#]+)/i);
+    if (match?.[1]) terms.add(match[1].toLowerCase());
+  } catch {
+    const match = raw.match(/\/(?:item|shop)\/([^/?#]+)/i);
+    if (match?.[1]) terms.add(match[1].toLowerCase());
+  }
+  return [...terms];
+}
 function money(value?: number | null) { return value === null || value === undefined ? "-" : `¥${value}`; }
 function formatDate(value?: string | Date | null) { return value ? new Intl.DateTimeFormat("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date(value)) : "-"; }
 function statusClass(status: string) { return status === "success" ? "pill ok" : status === "failed" ? "pill bad" : "pill warn"; }

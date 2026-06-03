@@ -22,10 +22,10 @@ async function tick() {
   }
 }
 
-console.log("[collector] started. Collecting one active shop per minute.");
+console.log("[collector] started. Collecting one active shop every 5 minutes.");
 void tick();
 
-cron.schedule("* * * * *", () => {
+cron.schedule("*/5 * * * *", () => {
   void tick();
 });
 

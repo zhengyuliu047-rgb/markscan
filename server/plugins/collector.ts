@@ -1,6 +1,6 @@
 import { collectDueShops } from "../utils/collector";
 
-const COLLECTOR_INTERVAL_MS = 60_000;
+const COLLECTOR_INTERVAL_MS = 5 * 60_000;
 
 type CollectorState = {
   running: boolean;
@@ -51,6 +51,6 @@ export default defineNitroPlugin((nitroApp) => {
     delete globalForCollector.__markscanCollector;
   });
 
-  console.log("[collector] embedded scheduler started. Collecting one active shop per minute.");
+  console.log("[collector] embedded scheduler started. Collecting one active shop every 5 minutes.");
   void tick();
 });

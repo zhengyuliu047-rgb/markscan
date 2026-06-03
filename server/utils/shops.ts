@@ -14,14 +14,37 @@ export function inferChannelFromBaseUrl(baseUrl: string): ShopChannel {
 
 export function parseShopUrl(rawUrl: string) {
   const url = new URL(rawUrl.trim());
-  const match = url.pathname.match(/\/(?:shop|item)\/([^/?#]+)/i);
+  const match = url.pathname.match(/\/shop\/([^/?#]+)/i);
   if (!match?.[1]) {
-    throw new Error("店铺 URL 格式应类似 https://domain/shop/TOKEN 或 https://domain/item/TOKEN");
+    throw new Error("店铺 URL 格式应类似 https://domain/shop/TOKEN；商品链接请使用 https://domain/item/GOODS_KEY");
   }
 
   return {
+    kind: "shop" as const,
     baseUrl: `${url.protocol}//${url.host}`,
     token: match[1],
     channel: inferChannelFromBaseUrl(`${url.protocol}//${url.host}`),
   };
+}
+
+export function parseGoodsUrl(rawUrl: string) {
+  const url = new URL(rawUrl.trim());
+  const match = url.pathname.match(/\/item\/([^/?#]+)/i);
+  if (!match?.[1]) {
+    throw new Error("商品链接格式应类似 https://domain/item/GOODS_KEY");
+  }
+
+  return {
+    kind: "item" as const,
+    baseUrl: `${url.protocol}//${url.host}`,
+    goodsKey: match[1],
+    channel: inferChannelFromBaseUrl(`${url.protocol}//${url.host}`),
+  };
+}
+
+export function parseShopOrGoodsUrl(rawUrl: string) {
+  const url = new URL(rawUrl.trim());
+  if (/\/shop\/[^/?#]+/i.test(url.pathname)) return parseShopUrl(rawUrl);
+  if (/\/item\/[^/?#]+/i.test(url.pathname)) return parseGoodsUrl(rawUrl);
+  throw new Error("URL 格式应类似 https://domain/shop/TOKEN 或 https://domain/item/GOODS_KEY");
 }

@@ -1,6 +1,7 @@
 import db from "./db";
 import {
   fetchCategories,
+  fetchGoodsInfo,
   fetchGoodsPage,
   fetchShopInfo,
   normalizeGoodsTypes,
@@ -14,6 +15,7 @@ import { isShopChannel } from "./shops";
 const PAGE_SIZE = 50;
 const MAX_PAGES_PER_CATEGORY = 100;
 const STALE_RUNNING_MINUTES = 30;
+const FAILED_RUN_BACKOFF_MINUTES = 10;
 
 function wait(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -24,12 +26,37 @@ function getErrorMessage(error: unknown) {
 }
 
 function getAvailability(goods: LdxpGoods) {
+  const status = (goods as { status?: number }).status;
+  if (status === 0) return false;
   const stock = toInteger(goods.extend?.stock_count);
   return stock !== 0;
 }
 
 function shouldAutoEnable(goods: LdxpGoods) {
   return matchesPriorityKeywords(goods.name, goods.description, goods.category?.name);
+}
+
+function snapshotRaw(goods: LdxpGoods) {
+  return JSON.stringify({ goods_key: goods.goods_key, name: goods.name, price: goods.price, market_price: goods.market_price, extend: goods.extend });
+}
+
+async function createListingSnapshot(input: { shopId: string; runId: string; listingId: string; standardProductId?: string | null; goods: LdxpGoods }) {
+  const sampledAt = new Date();
+  await db.priceSnapshot.create({
+    data: {
+      shopId: input.shopId,
+      listingId: input.listingId,
+      standardProductId: input.standardProductId,
+      collectionRunId: input.runId,
+      price: toNumber(input.goods.price),
+      marketPrice: toNumber(input.goods.market_price),
+      stock: toInteger(input.goods.extend?.stock_count),
+      isAvailable: getAvailability(input.goods),
+      sampledAt,
+      raw: snapshotRaw(input.goods),
+    },
+  });
+  await db.listing.update({ where: { id: input.listingId }, data: { lastSnapshotAt: sampledAt } });
 }
 
 async function createRun(input: { shopId: string; type: string; message: string }) {
@@ -156,6 +183,20 @@ export async function syncShopCatalog(shopId: string) {
   }
 }
 
+export async function syncSingleGoods(input: { shopId: string; baseUrl: string; goodsKey: string; enabled?: boolean; goods?: LdxpGoods }) {
+  const goods = input.goods ?? await fetchGoodsInfo(input.baseUrl, input.goodsKey);
+  const category = goods.category
+    ? await db.shopCategory.upsert({
+        where: { shopId_externalId_goodsType: { shopId: input.shopId, externalId: String(goods.category.id), goodsType: goods.goods_type } },
+        create: { shopId: input.shopId, externalId: String(goods.category.id), goodsType: goods.goods_type, name: goods.category.name, goodsCount: 0 },
+        update: { name: goods.category.name },
+      })
+    : null;
+  const listing = await upsertListing(input.shopId, category?.id ?? null, goods);
+  if (input.enabled !== undefined) await db.listing.update({ where: { id: listing.id }, data: { enabled: input.enabled } });
+  return { goods, listing };
+}
+
 export async function collectShop(shopId: string) {
   let shop = await db.shop.findUnique({
     where: { id: shopId },
@@ -218,23 +259,8 @@ export async function collectShop(shopId: string) {
           if (!trackedListing) continue;
           seenEnabledListingIds.add(trackedListing.id);
 
-          const sampledAt = new Date();
-          await db.priceSnapshot.create({
-            data: {
-              shopId,
-              listingId: listing.id,
-              standardProductId: listing.standardProductId,
-              collectionRunId: run.id,
-              price: toNumber(goods.price),
-              marketPrice: toNumber(goods.market_price),
-              stock: toInteger(goods.extend?.stock_count),
-              isAvailable: getAvailability(goods),
-              sampledAt,
-              raw: JSON.stringify({ goods_key: goods.goods_key, name: goods.name, price: goods.price, market_price: goods.market_price, extend: goods.extend }),
-            },
-          });
+          await createListingSnapshot({ shopId, runId: run.id, listingId: listing.id, standardProductId: listing.standardProductId, goods });
           snapshotsCreated += 1;
-          await db.listing.update({ where: { id: listing.id }, data: { lastSnapshotAt: sampledAt } });
         }
 
         categorySeen += goodsList.length;
@@ -245,7 +271,28 @@ export async function collectShop(shopId: string) {
       await wait(300);
     }
 
-    const missingListings = enabledListings.filter((listing) => !seenEnabledListingIds.has(listing.id));
+    let missingListings = enabledListings.filter((listing) => !seenEnabledListingIds.has(listing.id));
+    for (const listing of missingListings) {
+      try {
+        const goods = await fetchGoodsInfo(shop.baseUrl, listing.goodsKey);
+        const category = goods.category
+          ? await db.shopCategory.upsert({
+              where: { shopId_externalId_goodsType: { shopId, externalId: String(goods.category.id), goodsType: goods.goods_type } },
+              create: { shopId, externalId: String(goods.category.id), goodsType: goods.goods_type, name: goods.category.name, goodsCount: 0 },
+              update: { name: goods.category.name },
+            })
+          : null;
+        const refreshed = await upsertListing(shopId, category?.id ?? listing.categoryId, goods);
+        await createListingSnapshot({ shopId, runId: run.id, listingId: refreshed.id, standardProductId: refreshed.standardProductId, goods });
+        seenEnabledListingIds.add(listing.id);
+        itemsSeen += 1;
+        snapshotsCreated += 1;
+      } catch (error) {
+        console.warn(`[collector] goodsInfo fallback failed for ${listing.goodsKey}: ${getErrorMessage(error)}`);
+      }
+    }
+
+    missingListings = enabledListings.filter((listing) => !seenEnabledListingIds.has(listing.id));
     for (const listing of missingListings) {
       const sampledAt = new Date();
       await db.priceSnapshot.create({
@@ -283,13 +330,22 @@ export async function collectShop(shopId: string) {
 export async function collectDueShops() {
   const shops = await db.shop.findMany({
     where: { active: true },
-    include: { runs: { where: { type: "collect" }, orderBy: { startedAt: "desc" }, take: 1 } },
+    include: { runs: { where: { type: { in: ["collect", "sync"] } }, orderBy: { startedAt: "desc" }, take: 1 } },
     orderBy: { createdAt: "asc" },
   });
   const results: Array<{ shopId: string; status: "success" | "failed"; message: string }> = [];
-  const [shop] = shops.sort((a, b) => {
-    const lastA = a.runs[0]?.startedAt.getTime() ?? 0;
-    const lastB = b.runs[0]?.startedAt.getTime() ?? 0;
+  const now = Date.now();
+  const eligibleShops = shops.filter((shop) => {
+    const lastRun = shop.runs[0];
+    if (lastRun?.status !== "failed") return true;
+    return now - lastRun.startedAt.getTime() >= FAILED_RUN_BACKOFF_MINUTES * 60 * 1000;
+  });
+  const [shop] = eligibleShops.sort((a, b) => {
+    const aFailed = a.runs[0]?.status === "failed";
+    const bFailed = b.runs[0]?.status === "failed";
+    if (aFailed !== bFailed) return aFailed ? 1 : -1;
+    const lastA = a.runs[0]?.finishedAt?.getTime() ?? a.runs[0]?.startedAt.getTime() ?? 0;
+    const lastB = b.runs[0]?.finishedAt?.getTime() ?? b.runs[0]?.startedAt.getTime() ?? 0;
     if (lastA !== lastB) return lastA - lastB;
     return a.createdAt.getTime() - b.createdAt.getTime();
   });

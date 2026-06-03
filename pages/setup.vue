@@ -19,8 +19,8 @@
           <input v-model="confirmPassword" type="password" class="input" placeholder="再次输入密码" required />
         </label>
         <label class="field">
-          <span class="label">店铺 URL（可选）</span>
-          <input v-model="form.shopUrl" class="input" placeholder="https://pay.qxvx.cn/item/iwsoql" />
+          <span class="label">店铺 / 商品 URL（可选）</span>
+          <input v-model="form.shopUrl" class="input" placeholder="https://pay.ldxp.cn/item/5x5x0a" />
         </label>
         <label class="inline-form setup-toggle">
           <input v-model="form.active" type="checkbox" />

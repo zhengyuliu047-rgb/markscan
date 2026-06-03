@@ -58,54 +58,77 @@
       <div v-if="!data?.listings.length" class="card-pad">
         <div class="empty">暂无价格数据。请先在后台启用商品并完成一次采集。</div>
       </div>
-      <div v-else class="table-wrap">
-        <table class="table">
-          <thead>
-            <tr>
-              <th>商品</th>
-              <th>供应商</th>
-              <th>分类</th>
-              <th>现价</th>
-              <th>库存</th>
-              <th>变化</th>
-              <th>采样</th>
-              <th>来源</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="item in data.listings" :key="item.id">
-              <td>
-                <div class="stack">
-                  <strong>{{ item.displayName }}</strong>
-                  <span class="muted">{{ item.title }}</span>
-                  <span class="actions">
-                    <span class="pill">{{ item.goodsKey }}</span>
-                    <span v-if="item.priorityLabel" class="pill ok">{{ item.priorityLabel }}</span>
+      <div v-else>
+        <div class="table-wrap market-table-wrap">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>商品</th>
+                <th>供应商</th>
+                <th>分类</th>
+                <th>现价</th>
+                <th>库存</th>
+                <th>变化</th>
+                <th>采样</th>
+                <th>来源</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="item in data.listings" :key="item.id">
+                <td>
+                  <div class="stack">
+                    <strong>{{ item.displayName }}</strong>
+                    <span class="muted">{{ item.title }}</span>
+                    <span class="actions">
+                      <span class="pill">{{ item.goodsKey }}</span>
+                      <span v-if="item.priorityLabel" class="pill ok">{{ item.priorityLabel }}</span>
+                    </span>
+                  </div>
+                </td>
+                <td>
+                  <div class="stack">
+                    <span>{{ item.shopName }}</span>
+                    <span class="pill">{{ item.shopChannel }}</span>
+                  </div>
+                </td>
+                <td><span class="pill">{{ item.categoryName }}</span></td>
+                <td><span class="price">{{ money(item.latestPrice) }}</span></td>
+                <td>
+                  <span :class="item.latestAvailable ? 'pill ok' : 'pill bad'">
+                    {{ item.latestAvailable ? item.latestStock ?? '未知' : '下架/缺货' }}
                   </span>
-                </div>
-              </td>
-              <td>
-                <div class="stack">
-                  <span>{{ item.shopName }}</span>
-                  <span class="pill">{{ item.shopChannel }}</span>
-                </div>
-              </td>
-              <td><span class="pill">{{ item.categoryName }}</span></td>
-              <td><span class="price">{{ money(item.latestPrice) }}</span></td>
-              <td>
-                <span :class="item.latestAvailable ? 'pill ok' : 'pill bad'">
-                  {{ item.latestAvailable ? item.latestStock ?? '未知' : '下架/缺货' }}
-                </span>
-              </td>
-              <td>
-                <span v-if="item.change === null" class="muted">-</span>
-                <span v-else :class="item.change <= 0 ? 'pill ok' : 'pill warn'">{{ item.change > 0 ? '+' : '' }}{{ item.change }}</span>
-              </td>
-              <td>{{ formatDate(item.sampledAt) }}</td>
-              <td><a class="pill" :href="item.link" target="_blank" rel="noreferrer">查看</a></td>
-            </tr>
-          </tbody>
-        </table>
+                </td>
+                <td>
+                  <span v-if="item.change === null" class="muted">-</span>
+                  <span v-else :class="item.change <= 0 ? 'pill ok' : 'pill warn'">{{ item.change > 0 ? '+' : '' }}{{ item.change }}</span>
+                </td>
+                <td>{{ formatDate(item.sampledAt) }}</td>
+                <td><a class="pill" :href="item.link" target="_blank" rel="noreferrer">查看</a></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="market-card-list">
+          <article v-for="item in data.listings" :key="`market-${item.id}`" class="market-listing-card">
+            <div class="market-listing-top">
+              <div class="stack">
+                <strong>{{ item.displayName }}</strong>
+                <span class="muted">{{ item.title }}</span>
+              </div>
+              <span class="price">{{ money(item.latestPrice) }}</span>
+            </div>
+            <div class="market-listing-meta">
+              <span class="pill">{{ item.shopName }}</span>
+              <span class="pill">{{ item.categoryName }}</span>
+              <span :class="item.latestAvailable ? 'pill ok' : 'pill bad'">{{ item.latestAvailable ? `库存 ${item.latestStock ?? '未知'}` : '下架/缺货' }}</span>
+              <span v-if="item.priorityLabel" class="pill ok">{{ item.priorityLabel }}</span>
+            </div>
+            <div class="market-listing-bottom">
+              <span class="muted">{{ item.goodsKey }} / {{ formatDate(item.sampledAt) }}</span>
+              <a class="pill" :href="item.link" target="_blank" rel="noreferrer">查看</a>
+            </div>
+          </article>
+        </div>
       </div>
     </section>
 
