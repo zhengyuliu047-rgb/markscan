@@ -88,10 +88,10 @@
     <div v-if="!data?.shops.length" class="card-pad"><div class="empty">还没有店铺。</div></div>
     <div v-else class="table-wrap">
       <table class="table">
-        <thead><tr><th>店铺</th><th>渠道</th><th>状态</th><th>商品</th><th>时间</th><th>错误</th><th>操作</th></tr></thead>
+        <thead><tr><th class="shop-cell">店铺</th><th>渠道</th><th>状态</th><th>商品</th><th>时间</th><th>错误</th><th>操作</th></tr></thead>
         <tbody>
           <tr v-for="shop in data.shops" :key="shop.id">
-            <td><div class="stack"><NuxtLink :to="`/admin/shops/${shop.id}`"><strong>{{ shop.name }}</strong></NuxtLink><span class="muted">{{ shop.baseUrl }}/shop/{{ shop.token }}</span></div></td>
+            <td class="shop-cell"><div class="stack"><NuxtLink :to="`/admin/shops/${shop.id}`"><strong>{{ shop.name }}</strong></NuxtLink><span class="muted">{{ shop.baseUrl }}/shop/{{ shop.token }}</span></div></td>
             <td><span class="pill">{{ shop.channel }}</span></td>
             <td><span :class="shop.active ? 'pill ok' : 'pill bad'">{{ shop.active ? 'ACTIVE' : 'PAUSED' }}</span></td>
             <td><div class="stack"><span>{{ shop._count.listings }} SKU</span><span class="muted">{{ shop._count.categories }} 分类 / {{ shop._count.snapshots }} 快照</span></div></td>
@@ -108,10 +108,10 @@
     <div class="card-header"><div class="card-title">最近任务</div><div class="muted">记录同步、手动采集和自动轮询采集结果</div></div>
     <div class="table-wrap">
       <table class="table">
-        <thead><tr><th>时间</th><th>店铺</th><th>类型</th><th>状态</th><th>结果</th></tr></thead>
+        <thead><tr><th class="time-cell">时间</th><th class="shop-cell">店铺</th><th>类型</th><th>状态</th><th>结果</th></tr></thead>
         <tbody>
           <tr v-for="run in data?.recentRuns || []" :key="run.id">
-            <td>{{ formatDate(run.startedAt) }}</td><td>{{ run.shop?.name || '-' }}</td><td><span class="pill">{{ run.type }}</span></td><td><span :class="statusClass(run.status)">{{ run.status }}</span></td><td class="muted">{{ run.error || run.message || `${run.itemsSeen}/${run.snapshotsCreated}` }}</td>
+            <td class="time-cell">{{ formatDate(run.startedAt) }}</td><td class="shop-cell">{{ run.shop?.name || '-' }}</td><td><span class="pill">{{ run.type }}</span></td><td><span :class="statusClass(run.status)">{{ run.status }}</span></td><td class="muted">{{ run.error || run.message || `${run.itemsSeen}/${run.snapshotsCreated}` }}</td>
           </tr>
         </tbody>
       </table>

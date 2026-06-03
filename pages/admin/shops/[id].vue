@@ -70,7 +70,7 @@
       <div class="table-wrap listing-table-wrap">
         <table class="table">
           <thead>
-            <tr><th>采集状态</th><th>商品</th><th>分类</th><th>目录价</th><th>库存</th><th>标准商品映射</th><th>时间</th></tr>
+            <tr><th>采集状态</th><th class="goods-cell">商品</th><th>分类</th><th>目录价</th><th>库存</th><th>标准商品映射</th><th>时间</th></tr>
           </thead>
           <tbody>
             <tr v-for="listing in filteredListings" :key="listing.id">
@@ -80,7 +80,7 @@
                   <var-button :class="listing.enabled ? 'listing-toggle disable-toggle' : 'listing-toggle enable-toggle'" :loading="loading.toggle[listing.id]" @click="toggleListing(listing)">{{ listing.enabled ? '停用采集' : '启用采集' }}</var-button>
                 </div>
               </td>
-              <td><div class="stack"><a :href="listing.link" target="_blank" rel="noreferrer"><strong>{{ listing.title }}</strong></a><span class="muted">{{ listing.goodsKey }}</span></div></td>
+              <td class="goods-cell"><div class="stack"><a :href="listing.link" target="_blank" rel="noreferrer"><strong>{{ listing.title }}</strong></a><span class="muted">{{ listing.goodsKey }}</span></div></td>
               <td><span class="pill">{{ listing.category?.name || listing.goodsType }}</span></td>
               <td><span class="price">{{ money(listing.price) }}</span></td>
               <td><span :class="listing.isAvailable ? 'pill ok' : 'pill bad'">{{ listing.stock ?? '未知' }}</span></td>
