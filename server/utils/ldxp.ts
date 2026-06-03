@@ -69,6 +69,19 @@ const sessionCookieCache = new Map<
 const browserSessionCache = new Map<string, Promise<BrowserSession>>();
 const SESSION_CACHE_TTL_MS = 25 * 60 * 1000; // 25 分钟
 const BROWSER_SESSION_TTL_MS = 25 * 60 * 1000;
+const MAX_CONCURRENT_BROWSERS = 1;
+
+// Simple semaphore: at most MAX_CONCURRENT_BROWSERS browser launches at once
+let browserSlots = MAX_CONCURRENT_BROWSERS;
+const browserQueue: Array<() => void> = [];
+function acquireBrowserSlot(): Promise<void> {
+  if (browserSlots > 0) { browserSlots--; return Promise.resolve(); }
+  return new Promise((resolve) => browserQueue.push(resolve));
+}
+function releaseBrowserSlot() {
+  const next = browserQueue.shift();
+  if (next) { next(); } else { browserSlots++; }
+}
 
 type BrowserSession = {
   browser: any;
@@ -274,14 +287,22 @@ async function closeBrowserSession(session: BrowserSession) {
   } catch {
     // ignore close errors
   }
+  releaseBrowserSlot();
 }
 
 async function createBrowserSession(root: string, sessionPath: string): Promise<BrowserSession> {
   const { chromium } = await import("playwright");
-  const browser = await chromium.launch({
-    headless: true,
-    args: ["--disable-blink-features=AutomationControlled"],
-  });
+  await acquireBrowserSlot();
+  let browser: any;
+  try {
+    browser = await chromium.launch({
+      headless: true,
+      args: ["--disable-blink-features=AutomationControlled", "--single-process"],
+    });
+  } catch (error) {
+    releaseBrowserSlot();
+    throw error;
+  }
   const context = await browser.newContext({
     locale: "zh-CN",
     userAgent: BROWSER_USER_AGENT,
