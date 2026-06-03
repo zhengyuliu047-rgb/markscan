@@ -156,6 +156,7 @@ export async function syncShopCatalog(shopId: string) {
   if (!isShopChannel(shop.channel)) throw new Error(`Unsupported channel: ${shop.channel}`);
 
   const run = await createRun({ shopId, type: "sync", message: "同步店铺分类和商品" });
+  let runError: unknown = null;
 
   try {
     const info = await fetchShopInfo(shop.baseUrl, shop.token);
@@ -233,10 +234,15 @@ export async function syncShopCatalog(shopId: string) {
     });
     return { itemsSeen, snapshotsCreated };
   } catch (error) {
-    const message = getErrorMessage(error);
-    await db.collectionRun.update({ where: { id: run.id }, data: { status: "failed", error: message, finishedAt: new Date() } });
-    await db.shop.update({ where: { id: shopId }, data: { lastError: message } });
+    runError = error;
     throw error;
+  } finally {
+    const existing = await db.collectionRun.findUnique({ where: { id: run.id }, select: { status: true } });
+    if (existing?.status === "running") {
+      const message = runError ? getErrorMessage(runError) : "sync terminated unexpectedly";
+      await db.collectionRun.update({ where: { id: run.id }, data: { status: "failed", error: message, finishedAt: new Date() } }).catch(() => {});
+      await db.shop.update({ where: { id: shopId }, data: { lastError: message } }).catch(() => {});
+    }
   }
 }
 
@@ -272,6 +278,13 @@ export async function collectShop(shopId: string) {
   }
 
   const run = await createRun({ shopId, type: "collect", message: "采集已启用商品的价格和库存" });
+  let runFinalized = false;
+
+  const finalizeRun = async (data: Parameters<typeof db.collectionRun.update>[0]["data"]) => {
+    if (runFinalized) return;
+    runFinalized = true;
+    await db.collectionRun.update({ where: { id: run.id }, data: { finishedAt: new Date(), ...data } });
+  };
 
   try {
     let itemsSeen = 0;
@@ -280,10 +293,7 @@ export async function collectShop(shopId: string) {
 
     if (enabledListings.length === 0) {
       await db.shop.update({ where: { id: shopId }, data: { lastCollectedAt: new Date(), lastError: null } });
-      await db.collectionRun.update({
-        where: { id: run.id },
-        data: { status: "success", itemsSeen: 0, snapshotsCreated: 0, finishedAt: new Date(), message: "没有启用商品，跳过采集" },
-      });
+      await finalizeRun({ status: "success", itemsSeen: 0, snapshotsCreated: 0, message: "没有启用商品，跳过采集" });
       return { itemsSeen: 0, snapshotsCreated: 0 };
     }
 
@@ -376,21 +386,40 @@ export async function collectShop(shopId: string) {
     return { itemsSeen, snapshotsCreated };
   } catch (error) {
     const message = getErrorMessage(error);
-    await db.collectionRun.update({ where: { id: run.id }, data: { status: "failed", error: message, finishedAt: new Date() } });
-    await db.shop.update({ where: { id: shopId }, data: { lastError: message } });
+    await db.collectionRun.update({ where: { id: run.id }, data: { status: "failed", error: message, finishedAt: new Date() } }).catch(() => {});
+    await db.shop.update({ where: { id: shopId }, data: { lastError: message } }).catch(() => {});
     throw error;
+  } finally {
+    // Safety net: if run is still "running" after try/catch (e.g. unhandled rejection, process issue),
+    // mark it as failed so it doesn't block future scheduling.
+    try {
+      const currentRun = await db.collectionRun.findUnique({ where: { id: run.id }, select: { status: true } });
+      if (currentRun?.status === "running") {
+        await db.collectionRun.update({ where: { id: run.id }, data: { status: "failed", error: "run finalization safety net", finishedAt: new Date() } });
+      }
+    } catch {}
   }
 }
 
 export async function collectDueShops() {
   const autoSyncIntervalMinutes = getAutoSyncIntervalMinutes();
+  const now = Date.now();
+
+  try {
+    const staleCutoff = new Date(now - STALE_RUNNING_MINUTES * 60 * 1000);
+    const staleRuns = await db.collectionRun.updateMany({
+      where: { status: "running", startedAt: { lt: staleCutoff } },
+      data: { status: "failed", error: "forcibly terminated: stale running task", finishedAt: new Date() },
+    });
+    if (staleRuns.count > 0) console.warn(`[collector] cleared ${staleRuns.count} stale running tasks globally.`);
+  } catch {}
+
   const shops = await db.shop.findMany({
     where: { active: true },
     include: { runs: { where: { type: { in: ["collect", "sync"] } }, orderBy: { startedAt: "desc" }, take: 1 } },
     orderBy: { createdAt: "asc" },
   });
   const results: Array<{ shopId: string; type: "collect" | "sync"; status: "success" | "failed"; message: string }> = [];
-  const now = Date.now();
   const eligibleShops = shops.filter((shop) => {
     const lastRun = shop.runs[0];
     if (lastRun?.status === "running") return now - lastRun.startedAt.getTime() >= STALE_RUNNING_MINUTES * 60 * 1000;

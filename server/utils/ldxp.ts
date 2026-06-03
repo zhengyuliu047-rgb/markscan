@@ -347,7 +347,7 @@ async function browserPostForm<T>(
   const root = normalizeBaseUrl(baseUrl);
   const session = await getBrowserSession(root, options.sessionPath ?? shopPath(token));
   const result = await session.page.evaluate(
-    async (input: { path: string; data: Record<string, string | number | null | undefined> }) => {
+    async (input: { path: string; data: Record<string, string | number | null | undefined>; timeoutMs: number }) => {
       const body = new URLSearchParams();
       for (const [key, value] of Object.entries(input.data)) {
         body.set(key, value === null || value === undefined ? "" : String(value));
@@ -362,6 +362,7 @@ async function browserPostForm<T>(
         },
         body,
         cache: "no-store",
+        signal: AbortSignal.timeout(input.timeoutMs),
       });
 
       return {
@@ -371,7 +372,8 @@ async function browserPostForm<T>(
         text: await response.text(),
       };
     },
-    { path, data },
+    { path, data, timeoutMs: REQUEST_TIMEOUT_MS },
+    { timeout: REQUEST_TIMEOUT_MS * 2 },
   );
 
   if (!result.ok) throw new Error(`HTTP ${result.status} for ${root}${path}: ${previewResponseBody(result.text)}`);
