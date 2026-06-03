@@ -47,7 +47,7 @@
     <div class="card-header">
       <div>
         <div class="card-title">商品采集开关</div>
-        <div class="muted">目录价仅供后台参考；价格看板以采集快照为准。</div>
+        <div class="muted">同步会更新全店目录，并给已启用商品写快照；采集只刷新已启用商品价格和库存。</div>
       </div>
       <div class="actions">
         <var-button :loading="loading.bulkEnable" @click="bulk('enable')">启用全部</var-button>
@@ -160,7 +160,10 @@ definePageMeta({ layout: "admin", middleware: "admin" });
 
 const route = useRoute();
 const id = String(route.params.id);
-const { data, refresh } = await useFetch<any>(`/api/admin/shops/${id}`, { credentials: "include" });
+const { data, refresh } = await useAsyncData<any>(`admin-shop-${id}`, () => {
+  const adminFetch = import.meta.server ? useRequestFetch() : $fetch;
+  return adminFetch<any>(`/api/admin/shops/${id}`, { credentials: "include" });
+});
 let refreshTimer: ReturnType<typeof setInterval> | null = null;
 type NoticeType = "success" | "error";
 const notice = reactive<{ show: boolean; type: NoticeType; message: string }>({ show: false, type: "success", message: "" });

@@ -3,7 +3,7 @@
     <div>
       <div class="eyebrow">采集控制台</div>
       <h1>店铺与价格采集管理</h1>
-      <p>添加店铺、同步商品、启用采集后，系统每次采集一个店铺，完成后等待 1 分钟再采下一个。</p>
+      <p>添加店铺、同步商品、启用采集后，系统每次处理一个店铺任务，完成后等待 1 分钟再处理下一个。</p>
     </div>
   </section>
 
@@ -35,7 +35,7 @@
   </section>
 
   <section class="card" style="margin-bottom: 16px">
-    <div class="card-header"><div class="card-title">店铺列表</div><div class="muted">管理店铺商品和采集状态；自动任务完成一个店铺后等待 1 分钟再采下一个</div></div>
+    <div class="card-header"><div class="card-title">店铺列表</div><div class="muted">管理店铺商品和采集状态；自动同步目录和采集价格都会串行执行</div></div>
     <div v-if="!data?.shops.length" class="card-pad"><div class="empty">还没有店铺。</div></div>
     <div v-else class="table-wrap">
       <table class="table">
@@ -75,7 +75,10 @@
 <script setup lang="ts">
 definePageMeta({ layout: "admin", middleware: "admin" });
 
-const { data, refresh } = await useFetch<any>("/api/admin/overview", { credentials: "include" });
+const { data, refresh } = await useAsyncData<any>("admin-overview", () => {
+  const adminFetch = import.meta.server ? useRequestFetch() : $fetch;
+  return adminFetch<any>("/api/admin/overview", { credentials: "include" });
+});
 const loading = reactive({ create: false, sync: {} as Record<string, boolean>, collect: {} as Record<string, boolean> });
 const form = reactive({ shopUrl: "", channel: "ldxp", name: "", token: "", baseUrl: "https://pay.ldxp.cn" });
 let refreshTimer: ReturnType<typeof setInterval> | null = null;

@@ -42,11 +42,12 @@ const confirmPassword = ref("");
 const loading = ref(false);
 type NoticeType = "success" | "error";
 const notice = reactive<{ show: boolean; type: NoticeType; message: string }>({ show: false, type: "error", message: "" });
+const sessionFetch = import.meta.server ? useRequestFetch() : $fetch;
 
 const { data: status } = await useFetch<{ initialized: boolean }>("/api/setup/status");
 if (status.value?.initialized) {
-  const { data: session } = await useFetch<{ authenticated: boolean }>("/api/auth/session", { credentials: "include" });
-  await navigateTo(session.value?.authenticated ? "/admin" : "/login");
+  const session = await sessionFetch<{ authenticated: boolean }>("/api/auth/session", { credentials: "include" }).catch(() => null);
+  await navigateTo(session?.authenticated ? "/admin" : "/login");
 }
 
 function showNotice(message: string, type: NoticeType = "error") {

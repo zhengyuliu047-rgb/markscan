@@ -25,8 +25,10 @@
 </template>
 
 <script setup lang="ts">
-const { data: session } = await useFetch<{ authenticated: boolean; username: string | null }>("/api/auth/session", {
-  credentials: "include",
+type Session = { authenticated: boolean; username: string | null };
+const { data: session } = await useAsyncData<Session>("admin-session", () => {
+  const sessionFetch = import.meta.server ? useRequestFetch() : $fetch;
+  return sessionFetch<Session>("/api/auth/session", { credentials: "include" });
 });
 
 async function logout() {

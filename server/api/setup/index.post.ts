@@ -1,6 +1,6 @@
 import db from "../../utils/db";
 import { hashPassword, isSetupComplete, setAdminSession } from "../../utils/auth";
-import { collectShop, syncShopCatalog, syncSingleGoods } from "../../utils/collector";
+import { syncShopCatalog, syncSingleGoods } from "../../utils/collector";
 import { fetchGoodsInfo } from "../../utils/ldxp";
 import { parseShopOrGoodsUrl } from "../../utils/shops";
 
@@ -36,7 +36,7 @@ export default defineEventHandler(async (event) => {
         });
         shopId = shop.id;
         await syncSingleGoods({ shopId: shop.id, baseUrl: parsed.baseUrl, goodsKey: parsed.goodsKey, enabled: active, goods });
-        if (active) await collectShop(shop.id);
+        await syncShopCatalog(shop.id);
       } else {
         const shop = await db.shop.upsert({
           where: { channel_token: { channel: parsed.channel, token: parsed.token } },
@@ -45,7 +45,6 @@ export default defineEventHandler(async (event) => {
         });
         shopId = shop.id;
         await syncShopCatalog(shop.id);
-        if (active) await collectShop(shop.id);
       }
     } catch (error: any) {
       warnings.push(`店铺已跳过：${error?.message || "同步失败"}`);

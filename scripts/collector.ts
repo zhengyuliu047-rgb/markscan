@@ -14,7 +14,7 @@ async function tick() {
   running = true;
   try {
     const results = await collectDueShops();
-    const summary = results.map((item) => `${item.shopId}:${item.status}`).join(", ") || "no shops";
+    const summary = results.map((item) => `${item.type}:${item.shopId}:${item.status}`).join(", ") || "no shops";
     console.log(`[collector] ${new Date().toISOString()} ${summary}`);
   } catch (error) {
     console.error("[collector] tick failed", error);
@@ -30,7 +30,7 @@ async function loop() {
   }
 }
 
-console.log("[collector] started. Collecting one active shop, then waiting 1 minute after completion.");
+console.log("[collector] started. Running one active shop task, then waiting 1 minute after completion.");
 void loop();
 
 process.on("SIGINT", async () => {

@@ -9,13 +9,15 @@ import {
   toNumber,
   type LdxpGoods,
 } from "./ldxp";
-import { matchesPriorityKeywords } from "./priority";
+import { isExcludedProduct, matchesPriorityKeywords } from "./priority";
 import { isShopChannel } from "./shops";
 
 const PAGE_SIZE = 50;
 const MAX_PAGES_PER_CATEGORY = 100;
 const STALE_RUNNING_MINUTES = 30;
 const FAILED_RUN_BACKOFF_MINUTES = 10;
+const DEFAULT_AUTO_SYNC_INTERVAL_MINUTES = 6 * 60;
+const MISSING_REASON = "enabled_listing_not_found";
 
 function wait(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -23,6 +25,17 @@ function wait(ms: number) {
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
+}
+
+function isUnavailableGoodsError(error: unknown) {
+  const message = getErrorMessage(error);
+  return message.includes("商品未上架") || message.includes("商品不存在") || message.includes("商品已下架") || message.includes("未找到商品");
+}
+
+function getAutoSyncIntervalMinutes() {
+  const value = Number(process.env.MARKSCAN_AUTO_SYNC_INTERVAL_MINUTES ?? DEFAULT_AUTO_SYNC_INTERVAL_MINUTES);
+  if (!Number.isFinite(value)) return DEFAULT_AUTO_SYNC_INTERVAL_MINUTES;
+  return Math.trunc(value);
 }
 
 function getAvailability(goods: LdxpGoods) {
@@ -34,6 +47,10 @@ function getAvailability(goods: LdxpGoods) {
 
 function shouldAutoEnable(goods: LdxpGoods) {
   return matchesPriorityKeywords(goods.name, goods.description, goods.category?.name);
+}
+
+function shouldForceDisable(goods: LdxpGoods) {
+  return isExcludedProduct(goods.name, goods.description, goods.category?.name);
 }
 
 function snapshotRaw(goods: LdxpGoods) {
@@ -59,14 +76,33 @@ async function createListingSnapshot(input: { shopId: string; runId: string; lis
   await db.listing.update({ where: { id: input.listingId }, data: { lastSnapshotAt: sampledAt } });
 }
 
+async function createMissingSnapshot(input: { shopId: string; runId: string; listingId: string; standardProductId?: string | null; goodsKey: string }) {
+  const sampledAt = new Date();
+  await db.priceSnapshot.create({
+    data: {
+      shopId: input.shopId,
+      listingId: input.listingId,
+      standardProductId: input.standardProductId,
+      collectionRunId: input.runId,
+      price: null,
+      marketPrice: null,
+      stock: 0,
+      isAvailable: false,
+      sampledAt,
+      raw: JSON.stringify({ reason: MISSING_REASON, goods_key: input.goodsKey }),
+    },
+  });
+  await db.listing.update({ where: { id: input.listingId }, data: { isAvailable: false, stock: 0, lastSnapshotAt: sampledAt } });
+}
+
 async function createRun(input: { shopId: string; type: string; message: string }) {
   const staleCutoff = new Date(Date.now() - STALE_RUNNING_MINUTES * 60 * 1000);
   const running = await db.collectionRun.findFirst({
-    where: { shopId: input.shopId, type: input.type, status: "running", startedAt: { gte: staleCutoff } },
+    where: { shopId: input.shopId, status: "running", startedAt: { gte: staleCutoff } },
     orderBy: { startedAt: "desc" },
   });
 
-  if (running) throw new Error(`${input.type} task is already running for this shop`);
+  if (running) throw new Error(`${running.type} task is already running for this shop`);
 
   return db.collectionRun.create({
     data: { shopId: input.shopId, type: input.type, status: "running", message: input.message },
@@ -78,6 +114,7 @@ async function upsertListing(shopId: string, categoryId: string | null, goods: L
   const marketPrice = toNumber(goods.market_price);
   const stock = toInteger(goods.extend?.stock_count);
   const now = new Date();
+  const forceDisabled = shouldForceDisable(goods);
 
   return db.listing.upsert({
     where: { shopId_goodsKey: { shopId, goodsKey: goods.goods_key } },
@@ -94,7 +131,7 @@ async function upsertListing(shopId: string, categoryId: string | null, goods: L
       marketPrice,
       stock,
       isAvailable: getAvailability(goods),
-      enabled: shouldAutoEnable(goods),
+      enabled: !forceDisabled && shouldAutoEnable(goods),
       lastSeenAt: now,
     },
     update: {
@@ -108,13 +145,14 @@ async function upsertListing(shopId: string, categoryId: string | null, goods: L
       marketPrice,
       stock,
       isAvailable: getAvailability(goods),
+      ...(forceDisabled ? { enabled: false } : {}),
       lastSeenAt: now,
     },
   });
 }
 
 export async function syncShopCatalog(shopId: string) {
-  const shop = await db.shop.findUnique({ where: { id: shopId } });
+  const shop = await db.shop.findUnique({ where: { id: shopId }, include: { listings: { where: { enabled: true } } } });
   if (!shop) throw new Error("Shop not found");
   if (!isShopChannel(shop.channel)) throw new Error(`Unsupported channel: ${shop.channel}`);
 
@@ -123,7 +161,10 @@ export async function syncShopCatalog(shopId: string) {
   try {
     const info = await fetchShopInfo(shop.baseUrl, shop.token);
     const goodsTypes = normalizeGoodsTypes(info.goods_type_sort);
+    const enabledByGoodsKey = new Map(shop.listings.map((item) => [item.goodsKey, item]));
+    const seenEnabledListingIds = new Set<string>();
     let itemsSeen = 0;
+    let snapshotsCreated = 0;
 
     await db.shop.update({ where: { id: shopId }, data: { name: info.nickname || shop.name, lastError: null } });
 
@@ -157,7 +198,15 @@ export async function syncShopCatalog(shopId: string) {
           const goodsList = page.list ?? [];
           if (goodsList.length === 0) break;
 
-          for (const goods of goodsList) await upsertListing(shopId, category.id, goods);
+          for (const goods of goodsList) {
+            const listing = await upsertListing(shopId, category.id, goods);
+            const trackedListing = enabledByGoodsKey.get(goods.goods_key);
+            if (trackedListing) seenEnabledListingIds.add(trackedListing.id);
+            if (listing.enabled) {
+              await createListingSnapshot({ shopId, runId: run.id, listingId: listing.id, standardProductId: listing.standardProductId, goods });
+              snapshotsCreated += 1;
+            }
+          }
 
           itemsSeen += goodsList.length;
           categorySeen += goodsList.length;
@@ -169,12 +218,21 @@ export async function syncShopCatalog(shopId: string) {
       }
     }
 
-    await db.shop.update({ where: { id: shopId }, data: { lastSyncedAt: new Date(), lastError: null } });
+    for (const listing of shop.listings.filter((item) => !seenEnabledListingIds.has(item.id))) {
+      await createMissingSnapshot({ shopId, runId: run.id, listingId: listing.id, standardProductId: listing.standardProductId, goodsKey: listing.goodsKey });
+      snapshotsCreated += 1;
+    }
+
+    const finishedAt = new Date();
+    await db.shop.update({
+      where: { id: shopId },
+      data: { lastSyncedAt: finishedAt, ...(snapshotsCreated > 0 ? { lastCollectedAt: finishedAt } : {}), lastError: null },
+    });
     await db.collectionRun.update({
       where: { id: run.id },
-      data: { status: "success", itemsSeen, finishedAt: new Date(), message: `同步完成，发现 ${itemsSeen} 个商品` },
+      data: { status: "success", itemsSeen, snapshotsCreated, finishedAt, message: `同步完成，发现 ${itemsSeen} 个商品，写入 ${snapshotsCreated} 条快照` },
     });
-    return { itemsSeen };
+    return { itemsSeen, snapshotsCreated };
   } catch (error) {
     const message = getErrorMessage(error);
     await db.collectionRun.update({ where: { id: run.id }, data: { status: "failed", error: message, finishedAt: new Date() } });
@@ -193,7 +251,7 @@ export async function syncSingleGoods(input: { shopId: string; baseUrl: string; 
       })
     : null;
   const listing = await upsertListing(input.shopId, category?.id ?? null, goods);
-  if (input.enabled !== undefined) await db.listing.update({ where: { id: listing.id }, data: { enabled: input.enabled } });
+  if (input.enabled !== undefined) await db.listing.update({ where: { id: listing.id }, data: { enabled: input.enabled && !shouldForceDisable(goods) } });
   return { goods, listing };
 }
 
@@ -219,7 +277,12 @@ export async function collectShop(shopId: string) {
   try {
     let itemsSeen = 0;
     let snapshotsCreated = 0;
-    const enabledListings = shop.listings;
+    let enabledListings = shop.listings;
+    const excludedListings = enabledListings.filter((listing) => isExcludedProduct(listing.title, listing.description, listing.category?.name));
+    if (excludedListings.length > 0) {
+      await db.listing.updateMany({ where: { id: { in: excludedListings.map((listing) => listing.id) } }, data: { enabled: false } });
+      enabledListings = enabledListings.filter((listing) => !excludedListings.some((excluded) => excluded.id === listing.id));
+    }
 
     if (enabledListings.length === 0) {
       await db.shop.update({ where: { id: shopId }, data: { lastCollectedAt: new Date(), lastError: null } });
@@ -258,6 +321,7 @@ export async function collectShop(shopId: string) {
           const trackedListing = enabledByGoodsKey.get(goods.goods_key);
           if (!trackedListing) continue;
           seenEnabledListingIds.add(trackedListing.id);
+          if (!listing.enabled) continue;
 
           await createListingSnapshot({ shopId, runId: run.id, listingId: listing.id, standardProductId: listing.standardProductId, goods });
           snapshotsCreated += 1;
@@ -272,9 +336,10 @@ export async function collectShop(shopId: string) {
     }
 
     let missingListings = enabledListings.filter((listing) => !seenEnabledListingIds.has(listing.id));
+    let unresolvedMissingListings = 0;
     for (const listing of missingListings) {
       try {
-        const goods = await fetchGoodsInfo(shop.baseUrl, listing.goodsKey);
+        const goods = await fetchGoodsInfo(shop.baseUrl, listing.goodsKey, shop.token);
         const category = goods.category
           ? await db.shopCategory.upsert({
               where: { shopId_externalId_goodsType: { shopId, externalId: String(goods.category.id), goodsType: goods.goods_type } },
@@ -283,40 +348,38 @@ export async function collectShop(shopId: string) {
             })
           : null;
         const refreshed = await upsertListing(shopId, category?.id ?? listing.categoryId, goods);
-        await createListingSnapshot({ shopId, runId: run.id, listingId: refreshed.id, standardProductId: refreshed.standardProductId, goods });
         seenEnabledListingIds.add(listing.id);
         itemsSeen += 1;
+        if (!refreshed.enabled) continue;
+        await createListingSnapshot({ shopId, runId: run.id, listingId: refreshed.id, standardProductId: refreshed.standardProductId, goods });
         snapshotsCreated += 1;
       } catch (error) {
-        console.warn(`[collector] goodsInfo fallback failed for ${listing.goodsKey}: ${getErrorMessage(error)}`);
+        const message = getErrorMessage(error);
+        console.warn(`[collector] goodsInfo fallback failed for ${listing.goodsKey}: ${message}`);
+        if (isUnavailableGoodsError(error)) {
+          await createMissingSnapshot({ shopId, runId: run.id, listingId: listing.id, standardProductId: listing.standardProductId, goodsKey: listing.goodsKey });
+          seenEnabledListingIds.add(listing.id);
+          snapshotsCreated += 1;
+        }
       }
     }
 
     missingListings = enabledListings.filter((listing) => !seenEnabledListingIds.has(listing.id));
-    for (const listing of missingListings) {
-      const sampledAt = new Date();
-      await db.priceSnapshot.create({
-        data: {
-          shopId,
-          listingId: listing.id,
-          standardProductId: listing.standardProductId,
-          collectionRunId: run.id,
-          price: null,
-          marketPrice: null,
-          stock: 0,
-          isAvailable: false,
-          sampledAt,
-          raw: JSON.stringify({ reason: "enabled_listing_not_found", goods_key: listing.goodsKey }),
-        },
-      });
-      await db.listing.update({ where: { id: listing.id }, data: { isAvailable: false, stock: 0, lastSnapshotAt: sampledAt } });
-      snapshotsCreated += 1;
-    }
+    unresolvedMissingListings += missingListings.length;
 
-    await db.shop.update({ where: { id: shopId }, data: { lastCollectedAt: new Date(), lastError: null } });
+    const finishedAt = new Date();
+    await db.shop.update({ where: { id: shopId }, data: { lastCollectedAt: finishedAt, lastError: null } });
     await db.collectionRun.update({
       where: { id: run.id },
-      data: { status: "success", itemsSeen, snapshotsCreated, finishedAt: new Date(), message: `采集完成，写入 ${snapshotsCreated} 条快照` },
+      data: {
+        status: "success",
+        itemsSeen,
+        snapshotsCreated,
+        finishedAt,
+        message: unresolvedMissingListings > 0
+          ? `采集完成，写入 ${snapshotsCreated} 条快照，${unresolvedMissingListings} 个缺失商品未能确认`
+          : `采集完成，写入 ${snapshotsCreated} 条快照`,
+      },
     });
     return { itemsSeen, snapshotsCreated };
   } catch (error) {
@@ -328,18 +391,43 @@ export async function collectShop(shopId: string) {
 }
 
 export async function collectDueShops() {
+  const autoSyncIntervalMinutes = getAutoSyncIntervalMinutes();
   const shops = await db.shop.findMany({
     where: { active: true },
     include: { runs: { where: { type: { in: ["collect", "sync"] } }, orderBy: { startedAt: "desc" }, take: 1 } },
     orderBy: { createdAt: "asc" },
   });
-  const results: Array<{ shopId: string; status: "success" | "failed"; message: string }> = [];
+  const results: Array<{ shopId: string; type: "collect" | "sync"; status: "success" | "failed"; message: string }> = [];
   const now = Date.now();
   const eligibleShops = shops.filter((shop) => {
     const lastRun = shop.runs[0];
+    if (lastRun?.status === "running") return now - lastRun.startedAt.getTime() >= STALE_RUNNING_MINUTES * 60 * 1000;
     if (lastRun?.status !== "failed") return true;
     return now - lastRun.startedAt.getTime() >= FAILED_RUN_BACKOFF_MINUTES * 60 * 1000;
   });
+
+  const [syncShop] = autoSyncIntervalMinutes > 0
+    ? eligibleShops.filter((shop) => {
+        if (!shop.lastSyncedAt) return true;
+        return now - shop.lastSyncedAt.getTime() >= autoSyncIntervalMinutes * 60 * 1000;
+      }).sort((a, b) => {
+        const lastA = a.lastSyncedAt?.getTime() ?? 0;
+        const lastB = b.lastSyncedAt?.getTime() ?? 0;
+        if (lastA !== lastB) return lastA - lastB;
+        return a.createdAt.getTime() - b.createdAt.getTime();
+      })
+    : [];
+
+  if (syncShop) {
+    try {
+      const result = await syncShopCatalog(syncShop.id);
+      results.push({ shopId: syncShop.id, type: "sync", status: "success", message: `同步 ${result.itemsSeen} 个商品，写入 ${result.snapshotsCreated} 条快照` });
+    } catch (error) {
+      results.push({ shopId: syncShop.id, type: "sync", status: "failed", message: getErrorMessage(error) });
+    }
+    return results;
+  }
+
   const [shop] = eligibleShops.sort((a, b) => {
     const aFailed = a.runs[0]?.status === "failed";
     const bFailed = b.runs[0]?.status === "failed";
@@ -354,9 +442,9 @@ export async function collectDueShops() {
 
   try {
     const result = await collectShop(shop.id);
-    results.push({ shopId: shop.id, status: "success", message: `写入 ${result.snapshotsCreated} 条快照` });
+    results.push({ shopId: shop.id, type: "collect", status: "success", message: `写入 ${result.snapshotsCreated} 条快照` });
   } catch (error) {
-    results.push({ shopId: shop.id, status: "failed", message: getErrorMessage(error) });
+    results.push({ shopId: shop.id, type: "collect", status: "failed", message: getErrorMessage(error) });
   }
 
   return results;

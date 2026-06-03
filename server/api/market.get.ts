@@ -1,5 +1,5 @@
 import db from "../utils/db";
-import { getPriorityLabel, getPriorityScore } from "../utils/priority";
+import { getPriorityLabel, getPriorityScore, isExcludedProduct } from "../utils/priority";
 
 const LISTING_DISPLAY_LIMIT = 120;
 
@@ -50,7 +50,14 @@ export default defineEventHandler(async (event) => {
     db.priceSnapshot.count({ where: { sampledAt: { gte: since24h }, listing: { enabled: true } } }),
   ]);
 
-  const sortedListings = listings.sort((left, right) => {
+  const eligibleListings = listings.filter((listing) => !isExcludedProduct(
+    listing.title,
+    listing.description,
+    listing.standardProduct?.name,
+    listing.category?.name,
+  ));
+
+  const sortedListings = eligibleListings.sort((left, right) => {
     const leftLatest = left.snapshots[0];
     const rightLatest = right.snapshots[0];
     if (Boolean(leftLatest?.isAvailable) !== Boolean(rightLatest?.isAvailable)) return leftLatest?.isAvailable ? -1 : 1;

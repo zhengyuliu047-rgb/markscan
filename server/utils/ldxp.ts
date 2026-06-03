@@ -479,11 +479,11 @@ export function fetchShopInfo(baseUrl: string, token: string) {
   return postForm<LdxpShopInfo>(baseUrl, "/shopApi/Shop/info", token, { token, category_key: "" });
 }
 
-export function fetchGoodsInfo(baseUrl: string, goodsKey: string) {
+export function fetchGoodsInfo(baseUrl: string, goodsKey: string, sessionToken?: string) {
   return postForm<LdxpGoodsInfo>(baseUrl, "/shopApi/Shop/goodsInfo", goodsKey, { goods_key: goodsKey, trade_no: "" }, {
     refererPath: itemPath(goodsKey),
-    sessionPath: itemPath(goodsKey),
-    visitorId: `item-${goodsKey}`,
+    sessionPath: sessionToken ? shopPath(sessionToken) : itemPath(goodsKey),
+    visitorId: sessionToken ?? `item-${goodsKey}`,
   });
 }
 

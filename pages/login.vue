@@ -29,10 +29,11 @@ const form = reactive({ username: "", password: "" });
 const loading = ref(false);
 type NoticeType = "success" | "error";
 const notice = reactive<{ show: boolean; type: NoticeType; message: string }>({ show: false, type: "error", message: "" });
+const sessionFetch = import.meta.server ? useRequestFetch() : $fetch;
 
-const { data: session } = await useFetch<{ authenticated: boolean; initialized: boolean }>("/api/auth/session", { credentials: "include" });
-if (session.value && !session.value.initialized) await navigateTo("/setup");
-if (session.value?.authenticated) await navigateTo("/admin");
+const session = await sessionFetch<{ authenticated: boolean; initialized: boolean }>("/api/auth/session", { credentials: "include" }).catch(() => null);
+if (session && !session.initialized) await navigateTo("/setup");
+if (session?.authenticated) await navigateTo("/admin");
 
 function showNotice(message: string, type: NoticeType = "error") {
   notice.message = message;

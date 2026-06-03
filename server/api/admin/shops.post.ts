@@ -1,6 +1,6 @@
 import db from "../../utils/db";
 import { requireAdmin } from "../../utils/auth";
-import { collectShop, syncShopCatalog, syncSingleGoods } from "../../utils/collector";
+import { syncShopCatalog, syncSingleGoods } from "../../utils/collector";
 import { fetchGoodsInfo } from "../../utils/ldxp";
 import { inferChannelFromBaseUrl, isShopChannel, parseShopOrGoodsUrl } from "../../utils/shops";
 
@@ -36,17 +36,17 @@ export default defineEventHandler(async (event) => {
     });
 
     const singleResult = await syncSingleGoods({ shopId: shop.id, baseUrl: parsed.baseUrl, goodsKey: parsed.goodsKey, enabled: true, goods });
-    let collectResult: Awaited<ReturnType<typeof collectShop>> | null = null;
+    let syncResult: Awaited<ReturnType<typeof syncShopCatalog>> | null = null;
     try {
-      collectResult = await collectShop(shop.id);
+      syncResult = await syncShopCatalog(shop.id);
     } catch (error) {
-      console.warn(`[admin] 商品已加入，但立即采集失败：${error instanceof Error ? error.message : String(error)}`);
+      console.warn(`[admin] 商品已加入，但立即同步失败：${error instanceof Error ? error.message : String(error)}`);
     }
     return {
       ok: true,
-      message: `商品已加入采集列表：${singleResult.goods.name}。所属店铺：${goods.user?.nickname || token}。${collectResult ? `已采集 ${collectResult.snapshotsCreated} 条快照。` : "可稍后手动采集。"}`,
+      message: `商品已加入采集列表：${singleResult.goods.name}。所属店铺：${goods.user?.nickname || token}。${syncResult ? `已同步并写入 ${syncResult.snapshotsCreated} 条快照。` : "可稍后手动同步或采集。"}`,
       shopId: shop.id,
-      result: { goodsKey: parsed.goodsKey, collect: collectResult },
+      result: { goodsKey: parsed.goodsKey, sync: syncResult },
     };
   }
 
@@ -66,12 +66,11 @@ export default defineEventHandler(async (event) => {
 
   try {
     const syncResult = await syncShopCatalog(shop.id);
-    const collectResult = await collectShop(shop.id);
     return {
       ok: true,
-      message: `店铺已保存并同步完成，发现 ${syncResult.itemsSeen} 个商品，采集 ${collectResult.snapshotsCreated} 条快照。`,
+      message: `店铺已保存并同步完成，发现 ${syncResult.itemsSeen} 个商品，写入 ${syncResult.snapshotsCreated} 条快照。`,
       shopId: shop.id,
-      result: { sync: syncResult, collect: collectResult },
+      result: { sync: syncResult },
     };
   } catch (error: any) {
     if (error?.message?.includes("already running")) {

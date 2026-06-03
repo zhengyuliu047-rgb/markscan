@@ -1,5 +1,6 @@
 export default defineNuxtRouteMiddleware(async () => {
-  const session = await $fetch<{ authenticated: boolean; initialized: boolean }>("/api/auth/session", { credentials: "include" }).catch(() => null);
+  const requestFetch = import.meta.server ? useRequestFetch() : $fetch;
+  const session = await requestFetch<{ authenticated: boolean; initialized: boolean }>("/api/auth/session", { credentials: "include" }).catch(() => null);
 
   if (session && !session.initialized) {
     return navigateTo("/setup");

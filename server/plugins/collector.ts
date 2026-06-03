@@ -43,7 +43,7 @@ export default defineNitroPlugin((nitroApp) => {
     state.running = true;
     try {
       const results = await collectDueShops();
-      const summary = results.map((item) => `${item.shopId}:${item.status}`).join(", ") || "no shops";
+      const summary = results.map((item) => `${item.type}:${item.shopId}:${item.status}`).join(", ") || "no shops";
       console.log(`[collector] embedded ${new Date().toISOString()} ${summary}`);
     } catch (error) {
       console.error("[collector] embedded tick failed", error);
@@ -59,6 +59,6 @@ export default defineNitroPlugin((nitroApp) => {
     delete globalForCollector.__markscanCollector;
   });
 
-  console.log("[collector] embedded scheduler started. Collecting one active shop, then waiting 1 minute after completion.");
+  console.log("[collector] embedded scheduler started. Running one active shop task, then waiting 1 minute after completion.");
   void tick();
 });
