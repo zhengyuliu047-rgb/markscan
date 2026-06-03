@@ -46,7 +46,7 @@ function getAvailability(goods: LdxpGoods) {
 }
 
 function shouldAutoEnable(goods: LdxpGoods) {
-  return matchesPriorityKeywords(goods.name, goods.description, goods.category?.name);
+  return matchesPriorityKeywords(goods.name, goods.category?.name);
 }
 
 function shouldForceDisable(goods: LdxpGoods) {

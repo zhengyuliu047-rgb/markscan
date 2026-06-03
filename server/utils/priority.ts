@@ -19,9 +19,13 @@ export const PRIMARY_EXCLUDE_KEYWORDS = [
   "充值",
   "直充",
   "代充",
+  "代冲",
   "订阅",
   "月卡",
   "年卡",
+  "教程",
+  "free",
+  "api",
   "ios",
   "pix",
   "土区",
@@ -35,6 +39,7 @@ export const PRIMARY_EXCLUDE_KEYWORDS = [
   "token",
   "密钥",
   "key",
+  "接过码",
 ];
 
 function normalizeText(value: string) {
