@@ -69,9 +69,9 @@ const sessionCookieCache = new Map<
 const browserSessionCache = new Map<string, Promise<BrowserSession>>();
 const SESSION_CACHE_TTL_MS = 25 * 60 * 1000; // 25 分钟
 const BROWSER_SESSION_TTL_MS = 25 * 60 * 1000;
-const MAX_CONCURRENT_BROWSERS = 1;
+const MAX_CONCURRENT_BROWSERS = 2;
 
-// Simple semaphore: at most MAX_CONCURRENT_BROWSERS browser launches at once
+// Semaphore: limit concurrent chromium.launch() calls, not session lifetime
 let browserSlots = MAX_CONCURRENT_BROWSERS;
 const browserQueue: Array<() => void> = [];
 function acquireBrowserSlot(): Promise<void> {
@@ -287,7 +287,6 @@ async function closeBrowserSession(session: BrowserSession) {
   } catch {
     // ignore close errors
   }
-  releaseBrowserSlot();
 }
 
 async function createBrowserSession(root: string, sessionPath: string): Promise<BrowserSession> {
@@ -299,9 +298,8 @@ async function createBrowserSession(root: string, sessionPath: string): Promise<
       headless: true,
       args: ["--disable-blink-features=AutomationControlled", "--single-process"],
     });
-  } catch (error) {
-    releaseBrowserSlot();
-    throw error;
+  } finally {
+    releaseBrowserSlot(); // release immediately after launch, not after close
   }
   const context = await browser.newContext({
     locale: "zh-CN",
