@@ -1,7 +1,7 @@
 import db from "../server/utils/db";
 import { collectDueShops } from "../server/utils/collector";
 
-const COLLECTOR_DELAY_MS = 60_000;
+function randomDelay() { return 5_000 + Math.floor(Math.random() * 10_000); }
 let running = false;
 let stopped = false;
 
@@ -26,11 +26,11 @@ async function tick() {
 async function loop() {
   while (!stopped) {
     await tick();
-    if (!stopped) await new Promise((resolve) => setTimeout(resolve, COLLECTOR_DELAY_MS));
+    if (!stopped) await new Promise((resolve) => setTimeout(resolve, randomDelay()));
   }
 }
 
-console.log("[collector] started. Running one active shop task, then waiting 1 minute after completion.");
+console.log("[collector] started. Running one active shop task, then waiting 5–15 s (random) after completion.");
 void loop();
 
 process.on("SIGINT", async () => {
