@@ -145,7 +145,6 @@ async function upsertListing(shopId: string, categoryId: string | null, goods: L
       marketPrice,
       stock,
       isAvailable: getAvailability(goods),
-      ...(forceDisabled ? { enabled: false } : {}),
       lastSeenAt: now,
     },
   });
@@ -251,7 +250,7 @@ export async function syncSingleGoods(input: { shopId: string; baseUrl: string; 
       })
     : null;
   const listing = await upsertListing(input.shopId, category?.id ?? null, goods);
-  if (input.enabled !== undefined) await db.listing.update({ where: { id: listing.id }, data: { enabled: input.enabled && !shouldForceDisable(goods) } });
+  if (input.enabled !== undefined) await db.listing.update({ where: { id: listing.id }, data: { enabled: input.enabled } });
   return { goods, listing };
 }
 
@@ -278,11 +277,6 @@ export async function collectShop(shopId: string) {
     let itemsSeen = 0;
     let snapshotsCreated = 0;
     let enabledListings = shop.listings;
-    const excludedListings = enabledListings.filter((listing) => isExcludedProduct(listing.title, listing.description, listing.category?.name));
-    if (excludedListings.length > 0) {
-      await db.listing.updateMany({ where: { id: { in: excludedListings.map((listing) => listing.id) } }, data: { enabled: false } });
-      enabledListings = enabledListings.filter((listing) => !excludedListings.some((excluded) => excluded.id === listing.id));
-    }
 
     if (enabledListings.length === 0) {
       await db.shop.update({ where: { id: shopId }, data: { lastCollectedAt: new Date(), lastError: null } });
