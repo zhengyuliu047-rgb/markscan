@@ -310,14 +310,13 @@ export async function collectShop(shopId: string) {
         if (goodsList.length === 0) break;
 
         for (const goods of goodsList) {
-          const listing = await upsertListing(shopId, category.id, goods);
+          await upsertListing(shopId, category.id, goods);
           itemsSeen += 1;
           const trackedListing = enabledByGoodsKey.get(goods.goods_key);
           if (!trackedListing) continue;
           seenEnabledListingIds.add(trackedListing.id);
-          if (!listing.enabled) continue;
 
-          await createListingSnapshot({ shopId, runId: run.id, listingId: listing.id, standardProductId: listing.standardProductId, goods });
+          await createListingSnapshot({ shopId, runId: run.id, listingId: trackedListing.id, standardProductId: trackedListing.standardProductId, goods });
           snapshotsCreated += 1;
         }
 
@@ -341,11 +340,10 @@ export async function collectShop(shopId: string) {
               update: { name: goods.category.name },
             })
           : null;
-        const refreshed = await upsertListing(shopId, category?.id ?? listing.categoryId, goods);
+        await upsertListing(shopId, category?.id ?? listing.categoryId, goods);
         seenEnabledListingIds.add(listing.id);
         itemsSeen += 1;
-        if (!refreshed.enabled) continue;
-        await createListingSnapshot({ shopId, runId: run.id, listingId: refreshed.id, standardProductId: refreshed.standardProductId, goods });
+        await createListingSnapshot({ shopId, runId: run.id, listingId: listing.id, standardProductId: listing.standardProductId, goods });
         snapshotsCreated += 1;
       } catch (error) {
         const message = getErrorMessage(error);
@@ -396,8 +394,9 @@ export async function collectDueShops() {
   const eligibleShops = shops.filter((shop) => {
     const lastRun = shop.runs[0];
     if (lastRun?.status === "running") return now - lastRun.startedAt.getTime() >= STALE_RUNNING_MINUTES * 60 * 1000;
-    if (lastRun?.status !== "failed") return true;
-    return now - lastRun.startedAt.getTime() >= FAILED_RUN_BACKOFF_MINUTES * 60 * 1000;
+    if (lastRun?.status === "failed") return now - lastRun.startedAt.getTime() >= FAILED_RUN_BACKOFF_MINUTES * 60 * 1000;
+    const lastFinished = lastRun?.finishedAt?.getTime() ?? lastRun?.startedAt.getTime() ?? 0;
+    return now - lastFinished >= shop.intervalMinutes * 60 * 1000;
   });
 
   const [syncShop] = autoSyncIntervalMinutes > 0
