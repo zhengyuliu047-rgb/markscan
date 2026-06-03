@@ -372,8 +372,7 @@ async function browserPostForm<T>(
         text: await response.text(),
       };
     },
-    { path, data, timeoutMs: REQUEST_TIMEOUT_MS },
-    { timeout: REQUEST_TIMEOUT_MS * 2 },
+    { path, data, timeoutMs: REQUEST_TIMEOUT_MS }
   );
 
   if (!result.ok) throw new Error(`HTTP ${result.status} for ${root}${path}: ${previewResponseBody(result.text)}`);
