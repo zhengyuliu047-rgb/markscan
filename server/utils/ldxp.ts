@@ -69,9 +69,9 @@ const sessionCookieCache = new Map<
 const browserSessionCache = new Map<string, Promise<BrowserSession>>();
 const SESSION_CACHE_TTL_MS = 25 * 60 * 1000; // 25 分钟
 const BROWSER_SESSION_TTL_MS = 25 * 60 * 1000;
-const MAX_CONCURRENT_BROWSERS = 2;
+const MAX_CONCURRENT_BROWSERS = 1; // single shared browser instance
 
-// Semaphore: limit concurrent chromium.launch() calls, not session lifetime
+// Semaphore: serialize browser operations to avoid thread exhaustion
 let browserSlots = MAX_CONCURRENT_BROWSERS;
 const browserQueue: Array<() => void> = [];
 function acquireBrowserSlot(): Promise<void> {
@@ -276,31 +276,40 @@ async function getSessionCookies(baseUrl: string, sessionPath: string) {
   return await acquireSessionCookies(baseUrl, sessionPath);
 }
 
+// Single shared browser instance to avoid thread exhaustion
+let sharedBrowser: any = null;
+let sharedBrowserTimestamp = 0;
+const SHARED_BROWSER_TTL_MS = 20 * 60 * 1000; // restart browser every 20 min
+
+async function getSharedBrowser() {
+  const now = Date.now();
+  if (sharedBrowser) {
+    try {
+      if (now - sharedBrowserTimestamp < SHARED_BROWSER_TTL_MS && sharedBrowser.isConnected()) {
+        return sharedBrowser;
+      }
+    } catch {}
+    // expired or disconnected, close and recreate
+    try { await sharedBrowser.close(); } catch {}
+    sharedBrowser = null;
+  }
+  const { chromium } = await import("playwright");
+  sharedBrowser = await chromium.launch({
+    headless: true,
+    args: ["--disable-blink-features=AutomationControlled", "--no-sandbox", "--disable-dev-shm-usage"],
+  });
+  sharedBrowserTimestamp = now;
+  return sharedBrowser;
+}
+
 async function closeBrowserSession(session: BrowserSession) {
-  try {
-    await session.context?.close?.();
-  } catch {
-    // ignore close errors
-  }
-  try {
-    await session.browser?.close?.();
-  } catch {
-    // ignore close errors
-  }
+  // Only close page/context, not the shared browser
+  try { await session.page?.close?.(); } catch {}
+  try { await session.context?.close?.(); } catch {}
 }
 
 async function createBrowserSession(root: string, sessionPath: string): Promise<BrowserSession> {
-  const { chromium } = await import("playwright");
-  await acquireBrowserSlot();
-  let browser: any;
-  try {
-    browser = await chromium.launch({
-      headless: true,
-      args: ["--disable-blink-features=AutomationControlled", "--single-process"],
-    });
-  } finally {
-    releaseBrowserSlot(); // release immediately after launch, not after close
-  }
+  const browser = await getSharedBrowser();
   const context = await browser.newContext({
     locale: "zh-CN",
     userAgent: BROWSER_USER_AGENT,
