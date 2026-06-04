@@ -1,6 +1,6 @@
 import db from "../../utils/db";
 import { hashPassword, isSetupComplete, setAdminSession } from "../../utils/auth";
-import { syncShopCatalog, syncSingleGoods } from "../../utils/collector";
+import { syncSingleGoods } from "../../utils/collector";
 import { fetchGoodsInfo } from "../../utils/ldxp";
 import { parseShopOrGoodsUrl } from "../../utils/shops";
 
@@ -36,7 +36,6 @@ export default defineEventHandler(async (event) => {
         });
         shopId = shop.id;
         await syncSingleGoods({ shopId: shop.id, baseUrl: parsed.baseUrl, goodsKey: parsed.goodsKey, enabled: active, goods });
-        await syncShopCatalog(shop.id);
       } else {
         const shop = await db.shop.upsert({
           where: { channel_token: { channel: parsed.channel, token: parsed.token } },
@@ -44,7 +43,6 @@ export default defineEventHandler(async (event) => {
           update: { baseUrl: parsed.baseUrl, active },
         });
         shopId = shop.id;
-        await syncShopCatalog(shop.id);
       }
     } catch (error: any) {
       warnings.push(`店铺已跳过：${error?.message || "同步失败"}`);
@@ -54,6 +52,6 @@ export default defineEventHandler(async (event) => {
   return {
     ok: true,
     shopId,
-    message: warnings.length ? `初始化完成，但${warnings.join("；")}` : "初始化完成，已进入后台。",
+    message: warnings.length ? `初始化完成，但${warnings.join("；")}` : "初始化完成，店铺同步已加入队列。",
   };
 });

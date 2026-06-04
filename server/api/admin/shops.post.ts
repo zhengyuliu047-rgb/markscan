@@ -1,6 +1,6 @@
 import db from "../../utils/db";
 import { requireAdmin } from "../../utils/auth";
-import { syncShopCatalog, syncSingleGoods } from "../../utils/collector";
+import { syncSingleGoods } from "../../utils/collector";
 import { fetchGoodsInfo } from "../../utils/ldxp";
 import { inferChannelFromBaseUrl, isShopChannel, parseShopOrGoodsUrl } from "../../utils/shops";
 
@@ -36,17 +36,11 @@ export default defineEventHandler(async (event) => {
     });
 
     const singleResult = await syncSingleGoods({ shopId: shop.id, baseUrl: parsed.baseUrl, goodsKey: parsed.goodsKey, enabled: true, goods });
-    let syncResult: Awaited<ReturnType<typeof syncShopCatalog>> | null = null;
-    try {
-      syncResult = await syncShopCatalog(shop.id);
-    } catch (error) {
-      console.warn(`[admin] 商品已加入，但立即同步失败：${error instanceof Error ? error.message : String(error)}`);
-    }
     return {
       ok: true,
-      message: `商品已加入采集列表：${singleResult.goods.name}。所属店铺：${goods.user?.nickname || token}。${syncResult ? `已同步并写入 ${syncResult.snapshotsCreated} 条快照。` : "可稍后手动同步或采集。"}`,
+      message: `商品已加入采集列表：${singleResult.goods.name}。所属店铺：${goods.user?.nickname || token}。全店同步已加入队列，稍后自动执行。`,
       shopId: shop.id,
-      result: { goodsKey: parsed.goodsKey, sync: syncResult },
+      result: { goodsKey: parsed.goodsKey },
     };
   }
 
@@ -64,18 +58,9 @@ export default defineEventHandler(async (event) => {
     update: { name, baseUrl, intervalMinutes, active: true },
   });
 
-  try {
-    const syncResult = await syncShopCatalog(shop.id);
-    return {
-      ok: true,
-      message: `店铺已保存并同步完成，发现 ${syncResult.itemsSeen} 个商品，写入 ${syncResult.snapshotsCreated} 条快照。`,
-      shopId: shop.id,
-      result: { sync: syncResult },
-    };
-  } catch (error: any) {
-    if (error?.message?.includes("already running")) {
-      throw createError({ statusCode: 409, message: "店铺已保存，但同步或采集任务已在运行中，请稍后查看。" });
-    }
-    throw createError({ statusCode: 502, message: `店铺已保存，但自动同步或采集失败：${error?.message || "未知错误"}` });
-  }
+  return {
+    ok: true,
+    message: `店铺已保存，全店同步已加入队列，稍后自动执行。`,
+    shopId: shop.id,
+  };
 });
