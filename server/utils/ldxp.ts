@@ -337,7 +337,27 @@ async function getBrowserSession(root: string, sessionPath: string) {
   return await sessionPromise;
 }
 
+const BROWSER_TOTAL_TIMEOUT_MS = REQUEST_TIMEOUT_MS * 3; // 45s hard cap for entire browser request
+
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
 async function browserPostForm<T>(
+  baseUrl: string,
+  path: string,
+  token: string,
+  data: Record<string, string | number | null | undefined>,
+  options: PostFormOptions = {},
+) {
+  return withTimeout(browserPostFormInner<T>(baseUrl, path, token, data, options), BROWSER_TOTAL_TIMEOUT_MS, `browserPostForm ${path}`);
+}
+
+async function browserPostFormInner<T>(
   baseUrl: string,
   path: string,
   token: string,
