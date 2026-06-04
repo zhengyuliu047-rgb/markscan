@@ -316,6 +316,15 @@ async function createBrowserSession(root: string, sessionPath: string): Promise<
   });
   const page = await context.newPage();
 
+  // Block unnecessary resources to save memory/threads
+  await page.route("**/*", (route: any) => {
+    const type = route.request().resourceType();
+    if (["image", "stylesheet", "font", "media", "other"].includes(type)) {
+      return route.abort();
+    }
+    return route.continue();
+  });
+
   await page.goto(`${root}${sessionPath}`, {
     waitUntil: "domcontentloaded",
     timeout: REQUEST_TIMEOUT_MS * 4,
