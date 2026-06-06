@@ -117,7 +117,7 @@ AUTH_SECRET="replace-with-64-hex-random-secret"
 MARKSCAN_COOKIE_SECURE="1"
 MARKSCAN_USE_BROWSER_COLLECTOR="0"
 MARKSCAN_BROWSER_WAIT_MS="8000"
-MARKSCAN_AUTO_SYNC_INTERVAL_MINUTES="360"
+MARKSCAN_AUTO_SYNC_INTERVAL_MINUTES="60"
 ```
 
 如果本地使用 `npm run build` 后以生产模式启动，但没有 HTTPS，把 `MARKSCAN_COOKIE_SECURE` 临时设为 `0`，否则浏览器会拒收 Secure 登录 Cookie，表现为登录后又跳回登录页。正式 HTTPS 部署应保持 `1`。
@@ -143,7 +143,7 @@ MARKSCAN_BROWSER_WAIT_MS="8000"
 npx playwright install --with-deps chromium
 ```
 
-默认 Web 进程会启动内置任务器，每次处理一个启用店铺任务，完成后等待 1 分钟再处理下一个。默认每个店铺 6 小时自动同步一次目录，设 `MARKSCAN_AUTO_SYNC_INTERVAL_MINUTES="0"` 可关闭自动同步目录。单机单进程部署时不需要再开独立 worker。
+默认 Web 进程会启动内置任务器，每次处理一个启用店铺任务，完成后等待 1 分钟再处理下一个。默认每个店铺 1 小时自动同步一次目录，设 `MARKSCAN_AUTO_SYNC_INTERVAL_MINUTES="0"` 可关闭自动同步目录。单机单进程部署时不需要再开独立 worker。
 
 如果需要单独运行采集 worker，先在 Web 进程环境变量中禁用内置采集器：
 

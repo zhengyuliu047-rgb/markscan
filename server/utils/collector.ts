@@ -16,7 +16,7 @@ const PAGE_SIZE = 50;
 const MAX_PAGES_PER_CATEGORY = 100;
 const STALE_RUNNING_MINUTES = 30;
 const FAILED_RUN_BACKOFF_MINUTES = 10;
-const DEFAULT_AUTO_SYNC_INTERVAL_MINUTES = 6 * 60;
+const DEFAULT_AUTO_SYNC_INTERVAL_MINUTES = 60;
 const MISSING_REASON = "enabled_listing_not_found";
 
 function wait(ms: number) {

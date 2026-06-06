@@ -39,7 +39,6 @@ export const PRIMARY_EXCLUDE_KEYWORDS = [
   "token",
   "密钥",
   "key",
-  "接过码",
 ];
 
 function normalizeText(value: string) {
